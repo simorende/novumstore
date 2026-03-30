@@ -700,12 +700,12 @@ export default function App() {
       >
         <div className="relative z-10 flex flex-col items-center w-full max-w-md">
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1, ease: "easeOut" }}
+            initial={{ opacity: 0, filter: "blur(8px)" }}
+            animate={{ opacity: 1, filter: "blur(0px)" }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
             className="mb-12"
           >
-            <Logo size="large" className="animate-slam" />
+            <Logo size="large" />
           </motion.div>
 
           <motion.div
