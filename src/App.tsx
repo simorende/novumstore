@@ -539,7 +539,7 @@ export default function App() {
   };
 
   const getFilteredSales = (period: 'daily' | 'monthly' | 'annual') => {
-    const now = new Date();
+    const now = selectedDate;
     return sales.filter(s => {
       const date = s.timestamp?.toDate();
       if (!date) return false;
@@ -641,108 +641,120 @@ export default function App() {
 
   if (!introDismissed) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-black relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-white/5 rounded-full blur-[100px]" />
-
+      <AnimatePresence mode="wait">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
-          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-          className="z-10"
+          key="intro"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
+          transition={{ duration: 0.8, ease: "easeInOut" }}
+          className="min-h-screen flex flex-col items-center justify-center bg-black relative overflow-hidden"
         >
-          <Logo size="large" />
-        </motion.div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-white/5 rounded-full blur-[100px]" />
 
-        <div className="absolute bottom-20 z-10 flex flex-col items-center h-12 justify-center">
-          {loading ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 1, 0.3] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
-              className="text-white/40 font-sans tracking-[0.4em] text-[10px] uppercase"
-            >
-              Connessione in corso...
-            </motion.div>
-          ) : (
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              onClick={() => setIntroDismissed(true)}
-              className="px-10 py-4 border border-white/20 rounded-full text-white font-sans tracking-[0.3em] text-xs uppercase hover:bg-white hover:text-black transition-all duration-300"
-            >
-              Entra
-            </motion.button>
-          )}
-        </div>
-      </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
+            className="z-10"
+          >
+            <Logo size="large" />
+          </motion.div>
+
+          <div className="absolute bottom-20 z-10 flex flex-col items-center h-12 justify-center">
+            {loading ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 1, 0.3] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+                className="text-white/40 font-sans tracking-[0.4em] text-[10px] uppercase"
+              >
+                Connessione in corso...
+              </motion.div>
+            ) : (
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                onClick={() => setIntroDismissed(true)}
+                className="px-10 py-4 border border-white/20 rounded-full text-white font-sans tracking-[0.3em] text-xs uppercase hover:bg-white hover:text-black transition-all duration-300"
+              >
+                Entra
+              </motion.button>
+            )}
+          </div>
+        </motion.div>
+      </AnimatePresence>
     );
   }
 
   // Login Interface
   if (!showApp) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 overflow-hidden relative">
+      <motion.div
+        key="login"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="min-h-screen bg-black flex flex-col items-center justify-center p-6 overflow-hidden relative"
+      >
         <div className="relative z-10 flex flex-col items-center w-full max-w-md">
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1.5, ease: "easeOut" }}
+            transition={{ duration: 1, ease: "easeOut" }}
             className="mb-12"
           >
             <Logo size="large" className="animate-slam" />
           </motion.div>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key="start"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center gap-10 w-full"
-            >
-              <form onSubmit={handleLogin} className="flex flex-col gap-5 w-full max-w-[300px]">
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-[11px] tracking-widest transition-all"
-                />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-[11px] tracking-widest transition-all"
-                />
-                <button
-                  type="submit"
-                  className="group relative mt-2 px-10 py-4 border border-white/10 text-white font-sans text-[11px] font-bold tracking-[0.5em] uppercase rounded-full overflow-hidden transition-all hover:border-white/40 hover:scale-105 active:scale-95 text-center"
-                >
-                  <span className="relative z-10 transition-colors duration-500 group-hover:text-black">
-                    Accedi
-                  </span>
-                  <div className="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-700 cubic-bezier(0.19, 1, 0.22, 1)" />
-                </button>
-                {authError && (
-                  <p className="text-amber-500 text-[9px] tracking-widest uppercase text-center mt-2">{authError}</p>
-                )}
-              </form>
-
-              <motion.div
-                animate={{ opacity: [0.1, 0.3, 0.1] }}
-                transition={{ duration: 4, repeat: Infinity }}
-                className="flex flex-col items-center gap-2"
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3, ease: "easeOut" }}
+            className="flex flex-col items-center gap-10 w-full"
+          >
+            <form onSubmit={handleLogin} className="flex flex-col gap-5 w-full max-w-[300px]">
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-[11px] tracking-widest transition-all"
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-[11px] tracking-widest transition-all"
+              />
+              <button
+                type="submit"
+                className="group relative mt-2 px-10 py-4 border border-white/10 text-white font-sans text-[11px] font-bold tracking-[0.5em] uppercase rounded-full overflow-hidden transition-all hover:border-white/40 hover:scale-105 active:scale-95 text-center"
               >
-                <p className="text-white/20 text-[9px] tracking-[0.4em] uppercase font-light">
-                  Novum Store Management System
-                </p>
-              </motion.div>
+                <span className="relative z-10 transition-colors duration-500 group-hover:text-black">
+                  Accedi
+                </span>
+                <div className="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-700 cubic-bezier(0.19, 1, 0.22, 1)" />
+              </button>
+              {authError && (
+                <p className="text-amber-500 text-[9px] tracking-widest uppercase text-center mt-2">{authError}</p>
+              )}
+            </form>
+
+            <motion.div
+              animate={{ opacity: [0.1, 0.3, 0.1] }}
+              transition={{ duration: 4, repeat: Infinity }}
+              className="flex flex-col items-center gap-2"
+            >
+              <p className="text-white/20 text-[9px] tracking-[0.4em] uppercase font-light">
+                Novum Store Management System
+              </p>
             </motion.div>
-          </AnimatePresence>
+          </motion.div>
         </div>
 
         {/* Interactive Background Elements */}
@@ -757,7 +769,7 @@ export default function App() {
           />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,black_100%)]" />
         </div>
-      </div>
+      </motion.div>
     );
   }
 
