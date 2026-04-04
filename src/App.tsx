@@ -516,13 +516,15 @@ export default function App() {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Optimized scale for OCR v7
-        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+        // Reduced resolution for better mobile stability (800px max)
+        const maxDim = 800;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
         preprocessImage(canvas, ctx);
-        const processedImage = canvas.toDataURL('image/jpeg', 0.9);
+        const processedImage = canvas.toDataURL('image/jpeg', 0.85);
 
         // Direct recognition with one-shot API (v5/v6/v7)
         const { data } = await Tesseract.recognize(processedImage, 'ita', {
@@ -534,7 +536,7 @@ export default function App() {
               else if (p < 60) setScanStatus('Identificando taglie...');
               else setScanStatus('Lettura codici...');
             } else if (m.status === 'loading tesseract core' || m.status === 'downloading tesseract data') {
-              setScanStatus('Preparazione motore...');
+              setScanStatus('Configurazione motore...');
             }
           }
         });
@@ -549,11 +551,9 @@ export default function App() {
       URL.revokeObjectURL(imageUrl);
     } catch (err: any) {
       console.error("OCR Error:", err);
-      if (err.message?.includes('Network')) {
-        setScanError("Problema di connessione. Riprova.");
-      } else {
-        setScanError("Errore durante la scansione. Riprova.");
-      }
+      // Display detailed error for debugging
+      const errorDetail = err.message || "Errore sconosciuto";
+      setScanError(`Dettaglio Errore: ${errorDetail}`);
     } finally {
       setIsProcessing(false);
     }
