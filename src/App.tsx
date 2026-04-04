@@ -21,8 +21,13 @@ import {
   ChevronRight,
   Pencil,
   X,
-  Check
+  Check,
+  Camera,
+  Zap,
+  ZapOff,
+  Maximize2
 } from 'lucide-react';
+import { createWorker } from 'tesseract.js';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BarChart,
@@ -173,6 +178,15 @@ export default function App() {
   });
   const [weekOffset, setWeekOffset] = useState(0);
 
+  // OCR Scanner States
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scanStatus, setScanStatus] = useState<string>('');
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanResult, setScanResult] = useState<{ code: string; size: string; price: string } | null>(null);
+  const [torchOn, setTorchOn] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+
   // Sync analysis window with selected global date
   useEffect(() => {
     setAnalysisDate(selectedDate);
@@ -199,6 +213,37 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Camera Stream Lifecycle
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    
+    if (isScannerOpen) {
+      navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment', 
+          width: { ideal: 1920 }, 
+          height: { ideal: 1080 } 
+        } 
+      })
+      .then(s => {
+        stream = s;
+        const video = document.getElementById('scanner-video') as HTMLVideoElement;
+        if (video) video.srcObject = s;
+      })
+      .catch(err => {
+        console.error("Camera error:", err);
+        showMessage("Impossibile accedere alla fotocamera", "error");
+        setIsScannerOpen(false);
+      });
+    }
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isScannerOpen]);
 
   const fetchItems = async () => {
     const { data, error } = await supabase.from('items').select('*').order('code');
@@ -385,6 +430,129 @@ export default function App() {
       showMessage(`Errore: ${error.message}`, 'error');
     }
   };
+
+  // --- OCR SCANNER LOGIC ---
+
+  const preprocessImage = (canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      
+      // Professional Grayscale conversion
+      const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      
+      // High contrast boost
+      const contrast = 100; // Sharp increase
+      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+      const newGray = factor * (gray - 128) + 128;
+      
+      data[i] = data[i+1] = data[i+2] = Math.max(0, Math.min(255, newGray));
+    }
+    context.putImageData(imageData, 0, 0);
+  };
+
+  const parseOCRText = (text: string) => {
+    let results = { code: '', size: '', price: '' };
+
+    // 1. Price: Look for numbers with , or . and two decimals (e.g., 39,90)
+    const priceRegex = /(\d+[,.]\d{2})/;
+    const priceMatch = text.match(priceRegex);
+    if (priceMatch) results.price = priceMatch[1].replace(',', '.');
+
+    // 2. Size: Words like S, M, L, XL or numbers 38-60
+    const sizeWords = ['XXXL', 'XXL', 'XL', 'XXS', 'XS', 'S', 'M', 'L', 'UNI'];
+    const sizeWordRegex = new RegExp(`\\b(${sizeWords.join('|')})\\b`, 'i');
+    const sizeNumRegex = /\b(3[89]|[45]\d|60)\b/;
+
+    const sizeWordMatch = text.match(sizeWordRegex);
+    if (sizeWordMatch) {
+      results.size = sizeWordMatch[1].toUpperCase();
+    } else {
+      const sizeNumMatch = text.match(sizeNumRegex);
+      if (sizeNumMatch) results.size = sizeNumMatch[1];
+    }
+
+    // 3. Code: Alphanumeric after "Art." or "Cod."
+    const codeContextRegex = /(?:ART|COD|CODE|ARTICOLO)\.?\s*[:\-]?\s*([A-Z0-9]{3,20})/i;
+    const codeContextMatch = text.match(codeContextRegex);
+    if (codeContextMatch) {
+      results.code = codeContextMatch[1].toUpperCase();
+    } else {
+      // Fallback: search for long alphanumeric sequences not already taken by price/size
+      const fallbackCodeRegex = /\b([A-Z0-9]{4,20})\b/i;
+      const allMatches = Array.from(text.matchAll(fallbackCodeRegex));
+      for (const m of allMatches) {
+        const potential = m[1].toUpperCase();
+        if (potential !== results.size && !potential.match(/^\d+$/)) {
+          results.code = potential;
+          break;
+        }
+      }
+    }
+
+    return results;
+  };
+
+  const handleScanImage = async (imageFile: File) => {
+    setIsProcessing(true);
+    setScanProgress(0);
+    setScanStatus('Inizializzazione...');
+    setScanError(null);
+
+    try {
+      const worker = await createWorker('ita+eng', 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            const p = Math.floor(m.progress * 100);
+            setScanProgress(p);
+            if (p < 30) setScanStatus('Analizzando il prezzo...');
+            else if (p < 60) setScanStatus('Cercando la taglia...');
+            else setScanStatus('Estraendo il codice...');
+          }
+        },
+      });
+
+      // Create image object to draw on canvas
+      const img = new Image();
+      const imageUrl = URL.createObjectURL(imageFile);
+      img.src = imageUrl;
+      await new Promise((resolve) => { img.onload = resolve; });
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const scale = Math.min(1, 1500 / Math.max(img.width, img.height));
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        preprocessImage(canvas, ctx);
+        const processedImage = canvas.toDataURL('image/jpeg', 0.85);
+
+        const { data } = await worker.recognize(processedImage);
+
+        if (data.confidence < 25) {
+          setScanError("L'immagine è un po' sfocata, riprova con più luce.");
+        } else {
+          const parsed = parseOCRText(data.text);
+          setScanResult(parsed);
+        }
+      }
+      
+      await worker.terminate();
+      URL.revokeObjectURL(imageUrl);
+    } catch (err) {
+      console.error(err);
+      setScanError("Errore durante la scansione. Riprova.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // --- END SCANNER LOGIC ---
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1169,7 +1337,16 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
               <div className="lg:col-span-1 space-y-8">
                 <div className="bg-white/5 p-8 rounded-[40px] border border-white/5">
-                  <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase mb-8 text-white/60">Nuovo Articolo</h3>
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase text-white/60">Nuovo Articolo</h3>
+                    <button 
+                      onClick={() => setIsScannerOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all group"
+                    >
+                      <Camera size={14} className="text-white/40 group-hover:text-white group-hover:scale-110 transition-all" />
+                      <span className="text-[9px] font-bold tracking-widest uppercase text-white/40 group-hover:text-white">Scansiona</span>
+                    </button>
+                  </div>
                   <form onSubmit={handleAddItem} className="space-y-4">
                     <input
                       type="text" placeholder="CODICE" required
@@ -2028,6 +2205,199 @@ export default function App() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* OCR Scanner Overlay */}
+      <AnimatePresence>
+        {isScannerOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black flex flex-col"
+          >
+            <div className="absolute top-0 left-0 w-full p-8 flex justify-between items-center z-10">
+              <button 
+                onClick={() => setIsScannerOpen(false)}
+                className="p-4 bg-white/10 backdrop-blur-xl rounded-2xl text-white hover:bg-white/20 transition-all"
+              >
+                <X size={24} />
+              </button>
+              <h2 className="text-xs font-bold tracking-[0.4em] uppercase text-white/60">Scansione Etichetta</h2>
+              <button 
+                onClick={async () => {
+                  const video = document.getElementById('scanner-video') as HTMLVideoElement;
+                  if (video && video.srcObject) {
+                    const track = (video.srcObject as MediaStream).getVideoTracks()[0];
+                    try {
+                      const caps = track.getCapabilities() as any;
+                      if (caps.torch) {
+                        await track.applyConstraints({ advanced: [{ torch: !torchOn }] } as any);
+                        setTorchOn(!torchOn);
+                      } else {
+                        showMessage("Flash non supportato", "error");
+                      }
+                    } catch (e) { console.error(e); }
+                  }
+                }}
+                className={`p-4 backdrop-blur-xl rounded-2xl transition-all ${torchOn ? 'bg-amber-500 text-black' : 'bg-white/10 text-white'}`}
+              >
+                {torchOn ? <Zap size={24} /> : <ZapOff size={24} />}
+              </button>
+            </div>
+
+            <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+              <video 
+                id="scanner-video"
+                autoPlay 
+                playsInline 
+                muted
+                className="w-full h-full object-cover"
+                onCanPlay={() => {
+                  const video = document.getElementById('scanner-video') as HTMLVideoElement;
+                  if (video) video.play();
+                }}
+              />
+              
+              {/* Scanner Grid Overlay */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-[80vw] h-[30vh] border-2 border-white/30 rounded-3xl relative overflow-hidden">
+                  <motion.div 
+                    animate={{ top: ['0%', '100%', '0%'] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                    className="absolute left-0 w-full h-[2px] bg-white/60 shadow-[0_0_15px_white]" 
+                  />
+                </div>
+              </div>
+
+              {isProcessing && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center">
+                  <div className="relative w-32 h-32 mb-8">
+                    <svg className="w-full h-full transform -rotate-90">
+                      <circle cx="64" cy="64" r="60" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-white/10" />
+                      <circle 
+                        cx="64" cy="64" r="60" stroke="#fff" strokeWidth="4" fill="transparent" 
+                        strokeDasharray={377}
+                        strokeDashoffset={377 * (1 - scanProgress / 100)}
+                        style={{ transition: 'stroke-dashoffset 0.3s ease' }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center font-sans font-bold text-xl">{scanProgress}%</div>
+                  </div>
+                  <p className="text-xs font-bold tracking-[0.3em] uppercase animate-pulse">{scanStatus}</p>
+                </div>
+              )}
+
+              {scanError && (
+                <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-full max-w-xs px-8 py-5 bg-red-500 text-white rounded-2xl text-center shadow-2xl">
+                  <p className="text-[10px] font-bold tracking-widest uppercase">{scanError}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-10 bg-black flex justify-center border-t border-white/5">
+              <button 
+                onClick={async () => {
+                  const video = document.getElementById('scanner-video') as HTMLVideoElement;
+                  if (video) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                      ctx.drawImage(video, 0, 0);
+                      canvas.toBlob((blob) => {
+                        if (blob) {
+                          const file = new File([blob], "scan.jpg", { type: "image/jpeg" });
+                          handleScanImage(file);
+                        }
+                      }, 'image/jpeg', 0.95);
+                    }
+                  }
+                }}
+                disabled={isProcessing}
+                className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+              >
+                <div className="w-16 h-16 border-2 border-black rounded-full" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* OCR Result Confirmation Modal */}
+      <AnimatePresence>
+        {scanResult && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#0A0A0A] border border-white/10 p-10 rounded-[40px] max-w-md w-full shadow-2xl"
+            >
+              <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-8 text-white/40">Dati Rilevati</h3>
+              <div className="space-y-6 mb-10">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Codice</p>
+                    <input 
+                      type="text" 
+                      value={scanResult.code} 
+                      onChange={e => setScanResult({...scanResult, code: e.target.value.toUpperCase()})}
+                      className="w-full bg-transparent font-sans font-bold text-sm tracking-widest text-white outline-none focus:text-amber-500"
+                    />
+                  </div>
+                  <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Taglia</p>
+                    <input 
+                      type="text" 
+                      value={scanResult.size} 
+                      onChange={e => setScanResult({...scanResult, size: e.target.value.toUpperCase()})}
+                      className="w-full bg-transparent font-sans font-bold text-sm tracking-widest text-white outline-none focus:text-amber-500"
+                    />
+                  </div>
+                </div>
+                <div className="p-6 bg-white/5 rounded-3xl border border-white/5">
+                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Prezzo Rilevato</p>
+                  <div className="flex items-end gap-2">
+                    <span className="text-2xl font-bold text-white">€</span>
+                    <input 
+                      type="text" 
+                      value={scanResult.price}
+                      onChange={e => setScanResult({...scanResult, price: e.target.value})}
+                      className="w-full bg-transparent font-sans font-bold text-4xl tracking-tighter text-white outline-none focus:text-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setScanResult(null)}
+                  className="py-5 border border-white/10 text-white/40 font-sans text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Riprova
+                </button>
+                <button 
+                  onClick={() => {
+                    setNewItem({
+                      ...newItem,
+                      code: scanResult.code,
+                      size: scanResult.size,
+                      price: scanResult.price
+                    });
+                    setScanResult(null);
+                    setIsScannerOpen(false);
+                    showMessage("Dati inseriti nel form", "success");
+                  }}
+                  className="py-5 bg-white text-black font-sans text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                >
+                  Conferma
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
