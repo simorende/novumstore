@@ -848,7 +848,7 @@ export default function App() {
                   Questo software è ad uso puramente gestionale interno e non sostituisce l'emissione dello scontrino fiscale tramite registratore di cassa certificato
                 </p>
               </div>
-              <p className="text-white/20 text-[9px] tracking-[0.4em] uppercase font-light">
+              <p className="text-white text-[9px] tracking-[0.4em] uppercase font-light">
                 Novum Store Management System
               </p>
             </motion.div>
@@ -878,7 +878,7 @@ export default function App() {
         <div className="p-10">
           <Logo />
         </div>
-        
+
         <nav className="flex-1 px-6 space-y-1">
           {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -889,20 +889,19 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as any)}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
-                activeTab === item.id 
-                  ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]' 
+              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${activeTab === item.id
+                  ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]'
                   : 'text-white/40 hover:text-white hover:bg-white/5'
-              }`}
+                }`}
             >
               <item.icon size={18} className={`${activeTab === item.id ? '' : 'group-hover:scale-110 transition-transform'}`} />
               <span className="text-[10px] font-bold tracking-[0.2em] uppercase">{item.label}</span>
             </button>
           ))}
         </nav>
-        
+
         <div className="p-8 mt-auto">
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-4 px-6 py-4 text-white/20 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all group"
           >
@@ -927,9 +926,8 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as any)}
-              className={`p-3 rounded-xl transition-all ${
-                activeTab === item.id ? 'bg-white text-black' : 'text-white/40'
-              }`}
+              className={`p-3 rounded-xl transition-all ${activeTab === item.id ? 'bg-white text-black' : 'text-white/40'
+                }`}
             >
               <item.icon size={18} />
             </button>
@@ -1102,7 +1100,7 @@ export default function App() {
                         <div className="flex-1 min-w-0">
                           <h4 className="text-[10px] font-bold tracking-widest uppercase truncate">{s.itemName}</h4>
                           <p className="text-[9px] text-white/20 tracking-widest uppercase mt-0.5">
-                            {format(s.timestamp?.toDate(), 'dd MMM', { locale: it })} • 
+                            {format(s.timestamp?.toDate(), 'dd MMM', { locale: it })} •
                             {s.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
@@ -1240,7 +1238,7 @@ export default function App() {
                         </div>
                         <p className="text-xl font-sans font-bold tracking-tighter text-amber-500">€{item.price.toFixed(2)}</p>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 gap-4 mb-8">
                         <div className="bg-black/20 p-3 rounded-2xl border border-white/5">
                           <p className="text-[8px] text-white/30 tracking-widest uppercase mb-1">Taglia</p>
@@ -1278,116 +1276,116 @@ export default function App() {
                 {/* Desktop/Tablet View (md+) */}
                 <div className="hidden md:block bg-white/5 border border-white/10 rounded-[40px] overflow-hidden backdrop-blur-xl">
                   <table className="w-full text-left">
-                      <thead>
-                        <tr className="text-white/40 text-[10px] tracking-[0.3em] uppercase border-b border-white/10">
-                          <th className="px-2 lg:px-3 py-4">Codice</th>
-                          <th className="px-2 lg:px-3 py-4">Articolo</th>
-                          <th className="px-2 lg:px-3 py-4 text-center">Taglia</th>
-                          <th className="px-2 lg:px-3 py-4 text-center">Colore</th>
-                          <th className="px-2 lg:px-3 py-4">Prezzo</th>
-                          <th className="px-2 lg:px-3 py-4 text-center">Stock</th>
-                          <th className="px-2 lg:px-3 py-4 text-center">Stato</th>
-                          <th className="px-2 lg:px-3 py-4 text-center">Azioni</th>
+                    <thead>
+                      <tr className="text-white/40 text-[10px] tracking-[0.3em] uppercase border-b border-white/10">
+                        <th className="px-2 lg:px-3 py-4">Codice</th>
+                        <th className="px-2 lg:px-3 py-4">Articolo</th>
+                        <th className="px-2 lg:px-3 py-4 text-center">Taglia</th>
+                        <th className="px-2 lg:px-3 py-4 text-center">Colore</th>
+                        <th className="px-2 lg:px-3 py-4">Prezzo</th>
+                        <th className="px-2 lg:px-3 py-4 text-center">Stock</th>
+                        <th className="px-2 lg:px-3 py-4 text-center">Stato</th>
+                        <th className="px-2 lg:px-3 py-4 text-center">Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {items.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-2 py-10 text-center">
+                            <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun articolo in inventario</p>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {items.length === 0 ? (
-                          <tr>
-                            <td colSpan={8} className="px-2 py-10 text-center">
-                              <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun articolo in inventario</p>
-                            </td>
-                          </tr>
-                        ) : (
-                          (selectedCategory ? items.filter(i => i.name.toUpperCase().startsWith(selectedCategory)) : items).map(item => (
-                            editingItem === item.code ? (
-                              <tr key={`edit-${item.code}`} className="bg-white/10 shadow-inner">
-                                <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/40">{item.code}</td>
-                                <td className="px-2 lg:px-3 py-4">
-                                  <input type="text" value={editForm.name || ''} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase outline-none focus:border-white" />
-                                </td>
-                                <td className="px-2 lg:px-3 py-4">
-                                  <input type="text" placeholder="TG" value={editForm.size || ''} onChange={e => setEditForm({ ...editForm, size: e.target.value })} className="w-10 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
-                                </td>
-                                <td className="px-2 lg:px-3 py-4">
-                                  <input type="text" placeholder="COL" value={editForm.color || ''} onChange={e => setEditForm({ ...editForm, color: e.target.value })} className="w-12 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
-                                </td>
-                                <td className="px-2 lg:px-3 py-4">
-                                  <input type="text" value={editForm.price || ''} onChange={e => setEditForm({ ...editForm, price: e.target.value as any })} className="w-14 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs outline-none focus:border-white" />
-                                </td>
-                                <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center text-white/50">{item.quantity}</td>
-                                <td className="px-2 lg:px-3 py-4 text-center text-white/20">-</td>
-                                <td className="px-2 lg:px-3 py-4 text-center">
-                                  <div className="flex justify-center gap-1">
-                                    <button onClick={handleSaveEdit} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-lg transition-colors border border-emerald-500/30" title="Salva"><Check size={14} /></button>
-                                    <button onClick={() => setEditingItem(null)} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white/60 hover:text-white transition-colors border border-white/10" title="Annulla"><X size={14} /></button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : (
-                              <tr key={item.code} className="hover:bg-white/5 transition-colors group">
-                                <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/60 truncate max-w-[80px]">{item.code}</td>
-                                <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest uppercase truncate max-w-[120px]">{item.name}</td>
-                                <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
-                                  {item.size ? item.size : (
-                                    <input
-                                      type="text"
-                                      placeholder="TG"
-                                      className="w-10 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
-                                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                      onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'size', e.currentTarget.value); }}
-                                    />
-                                  )}
-                                </td>
-                                <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
-                                  {item.color ? item.color : (
-                                    <input
-                                      type="text"
-                                      placeholder="COL"
-                                      className="w-12 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
-                                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                      onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'color', e.currentTarget.value); }}
-                                    />
-                                  )}
-                                </td>
-                                <td className="px-2 lg:px-3 py-4 text-xs tracking-tighter">€{item.price.toFixed(2)}</td>
-                                <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center">{item.quantity}</td>
-                                <td className="px-2 lg:px-3 py-4">
-                                  <div className={`w-2 h-2 mx-auto rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                </td>
-                                <td className="px-2 lg:px-3 py-4 text-center">
-                                  <div className="flex justify-center gap-1 lg:opacity-0 transition-opacity lg:group-hover:opacity-100">
-                                    <button
-                                      onClick={() => startSaleFromInventory(item)}
-                                      className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"
-                                      title="Vendi"
-                                    >
-                                      <ShoppingCart size={14} />
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setEditingItem(item.code);
-                                        setEditForm({ name: item.name, size: item.size || '', color: item.color || '', price: item.price });
-                                      }}
-                                      className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400/60 hover:text-blue-400 transition-colors"
-                                      title="Modifica"
-                                    >
-                                      <Pencil size={14} />
-                                    </button>
-                                    <button
-                                      onClick={() => setDeleteConfirm(item.code)}
-                                      className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500/40 hover:text-red-500 transition-colors"
-                                      title="Elimina"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            )
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                      ) : (
+                        (selectedCategory ? items.filter(i => i.name.toUpperCase().startsWith(selectedCategory)) : items).map(item => (
+                          editingItem === item.code ? (
+                            <tr key={`edit-${item.code}`} className="bg-white/10 shadow-inner">
+                              <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/40">{item.code}</td>
+                              <td className="px-2 lg:px-3 py-4">
+                                <input type="text" value={editForm.name || ''} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase outline-none focus:border-white" />
+                              </td>
+                              <td className="px-2 lg:px-3 py-4">
+                                <input type="text" placeholder="TG" value={editForm.size || ''} onChange={e => setEditForm({ ...editForm, size: e.target.value })} className="w-10 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
+                              </td>
+                              <td className="px-2 lg:px-3 py-4">
+                                <input type="text" placeholder="COL" value={editForm.color || ''} onChange={e => setEditForm({ ...editForm, color: e.target.value })} className="w-12 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
+                              </td>
+                              <td className="px-2 lg:px-3 py-4">
+                                <input type="text" value={editForm.price || ''} onChange={e => setEditForm({ ...editForm, price: e.target.value as any })} className="w-14 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs outline-none focus:border-white" />
+                              </td>
+                              <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center text-white/50">{item.quantity}</td>
+                              <td className="px-2 lg:px-3 py-4 text-center text-white/20">-</td>
+                              <td className="px-2 lg:px-3 py-4 text-center">
+                                <div className="flex justify-center gap-1">
+                                  <button onClick={handleSaveEdit} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-lg transition-colors border border-emerald-500/30" title="Salva"><Check size={14} /></button>
+                                  <button onClick={() => setEditingItem(null)} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white/60 hover:text-white transition-colors border border-white/10" title="Annulla"><X size={14} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr key={item.code} className="hover:bg-white/5 transition-colors group">
+                              <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/60 truncate max-w-[80px]">{item.code}</td>
+                              <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest uppercase truncate max-w-[120px]">{item.name}</td>
+                              <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
+                                {item.size ? item.size : (
+                                  <input
+                                    type="text"
+                                    placeholder="TG"
+                                    className="w-10 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                    onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'size', e.currentTarget.value); }}
+                                  />
+                                )}
+                              </td>
+                              <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
+                                {item.color ? item.color : (
+                                  <input
+                                    type="text"
+                                    placeholder="COL"
+                                    className="w-12 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                    onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'color', e.currentTarget.value); }}
+                                  />
+                                )}
+                              </td>
+                              <td className="px-2 lg:px-3 py-4 text-xs tracking-tighter">€{item.price.toFixed(2)}</td>
+                              <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center">{item.quantity}</td>
+                              <td className="px-2 lg:px-3 py-4">
+                                <div className={`w-2 h-2 mx-auto rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                              </td>
+                              <td className="px-2 lg:px-3 py-4 text-center">
+                                <div className="flex justify-center gap-1 lg:opacity-0 transition-opacity lg:group-hover:opacity-100">
+                                  <button
+                                    onClick={() => startSaleFromInventory(item)}
+                                    className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"
+                                    title="Vendi"
+                                  >
+                                    <ShoppingCart size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingItem(item.code);
+                                      setEditForm({ name: item.name, size: item.size || '', color: item.color || '', price: item.price });
+                                    }}
+                                    className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400/60 hover:text-blue-400 transition-colors"
+                                    title="Modifica"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteConfirm(item.code)}
+                                    className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500/40 hover:text-red-500 transition-colors"
+                                    title="Elimina"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
