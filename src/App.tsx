@@ -27,7 +27,7 @@ import {
   ZapOff,
   Maximize2
 } from 'lucide-react';
-import { createWorker } from 'tesseract.js';
+import Tesseract from 'tesseract.js';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BarChart,
@@ -504,49 +504,56 @@ export default function App() {
     setScanError(null);
 
     try {
-      const worker = await createWorker('ita+eng', 1, {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            const p = Math.floor(m.progress * 100);
-            setScanProgress(p);
-            if (p < 30) setScanStatus('Analizzando il prezzo...');
-            else if (p < 60) setScanStatus('Cercando la taglia...');
-            else setScanStatus('Estraendo il codice...');
-          }
-        },
-      });
-
       // Create image object to draw on canvas
       const img = new Image();
       const imageUrl = URL.createObjectURL(imageFile);
       img.src = imageUrl;
-      await new Promise((resolve) => { img.onload = resolve; });
+      await new Promise((resolve, reject) => { 
+        img.onload = resolve; 
+        img.onerror = () => reject(new Error("Errore caricamento immagine"));
+      });
 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        const scale = Math.min(1, 1500 / Math.max(img.width, img.height));
+        // Optimized scale for OCR v7
+        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         preprocessImage(canvas, ctx);
-        const processedImage = canvas.toDataURL('image/jpeg', 0.85);
+        const processedImage = canvas.toDataURL('image/jpeg', 0.9);
 
-        const { data } = await worker.recognize(processedImage);
+        // Direct recognition with one-shot API (v5/v6/v7)
+        const { data } = await Tesseract.recognize(processedImage, 'ita', {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              const p = Math.floor(m.progress * 100);
+              setScanProgress(p);
+              if (p < 30) setScanStatus('Analizzando i prezzi...');
+              else if (p < 60) setScanStatus('Identificando taglie...');
+              else setScanStatus('Lettura codici...');
+            } else if (m.status === 'loading tesseract core' || m.status === 'downloading tesseract data') {
+              setScanStatus('Preparazione motore...');
+            }
+          }
+        });
 
-        if (data.confidence < 25) {
+        if (data.confidence < 20) {
           setScanError("L'immagine è un po' sfocata, riprova con più luce.");
         } else {
           const parsed = parseOCRText(data.text);
           setScanResult(parsed);
         }
       }
-      
-      await worker.terminate();
       URL.revokeObjectURL(imageUrl);
-    } catch (err) {
-      console.error(err);
-      setScanError("Errore durante la scansione. Riprova.");
+    } catch (err: any) {
+      console.error("OCR Error:", err);
+      if (err.message?.includes('Network')) {
+        setScanError("Problema di connessione. Riprova.");
+      } else {
+        setScanError("Errore durante la scansione. Riprova.");
+      }
     } finally {
       setIsProcessing(false);
     }
