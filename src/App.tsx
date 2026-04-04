@@ -706,10 +706,12 @@ export default function App() {
 
       Object.entries(sizeMap).forEach(([size, days]) => {
         if (days[dayKey]) {
+          // Aggiungiamo un piccolo jitter casuale basato sulla taglia per evitare sovrapposizioni perfette
+          const jitter = (SIZES_ORDER.indexOf(size) % 3 - 1) * 0.15;
           data.push({
             size,
             yIndex: SIZES_ORDER.indexOf(size) !== -1 ? SIZES_ORDER.indexOf(size) : SIZES_ORDER.length,
-            day: i, // 0 (Lun) a 6 (Dom)
+            day: i + jitter, // Jitter sull'asse X
             dateObj: currentDay,
             dayName: format(currentDay, 'EEE', { locale: it }),
             quantity: days[dayKey],
@@ -848,7 +850,7 @@ export default function App() {
                   Questo software è ad uso puramente gestionale interno e non sostituisce l'emissione dello scontrino fiscale tramite registratore di cassa certificato
                 </p>
               </div>
-              <p className="text-white text-[9px] tracking-[0.4em] uppercase font-light">
+              <p className="text-center text-white/60 text-[9px] tracking-[0.4em] uppercase font-light">
                 Novum Store Management System
               </p>
             </motion.div>
@@ -890,8 +892,8 @@ export default function App() {
               key={item.id}
               onClick={() => setActiveTab(item.id as any)}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${activeTab === item.id
-                  ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]'
-                  : 'text-white/40 hover:text-white hover:bg-white/5'
+                ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]'
+                : 'text-white/40 hover:text-white hover:bg-white/5'
                 }`}
             >
               <item.icon size={18} className={`${activeTab === item.id ? '' : 'group-hover:scale-110 transition-transform'}`} />
@@ -1086,35 +1088,60 @@ export default function App() {
               {/* Recent Sales */}
               <div className="bg-white/5 p-10 rounded-[40px] border border-white/5 flex flex-col">
                 <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-10 text-white/60">Ultime Transazioni</h3>
-                <div className="flex-1 space-y-4 overflow-auto pr-2 custom-scrollbar">
+                <div className="flex-1 space-y-4 overflow-x-auto pb-4 custom-scrollbar">
                   {sales.length === 0 ? (
                     <div className="h-full flex items-center justify-center">
                       <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessuna attività registrata</p>
                     </div>
                   ) : (
                     dailySales.map(s => (
-                      <div key={s.id} className="group flex items-center gap-4 p-4 sm:p-6 bg-white/[0.02] border border-white/5 rounded-3xl hover:bg-white/[0.04] transition-all">
+                      <div key={s.id} className="min-w-[450px] sm:min-w-0 group flex items-center gap-4 p-4 sm:p-6 bg-white/[0.02] border border-white/5 rounded-3xl hover:bg-white/[0.04] transition-all snap-start">
                         <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-lg font-script text-white/40 group-hover:scale-110 transition-transform">
                           {s.itemName.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-[10px] font-bold tracking-widest uppercase truncate">{s.itemName}</h4>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const item = items.find(it => it.code === s.itemCode);
+                              return <div className={`w-1.5 h-1.5 rounded-full ${item && item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />;
+                            })()}
+                            <h4 className="text-[10px] font-bold tracking-widest uppercase whitespace-nowrap overflow-visible">
+                              {s.itemName}
+                            </h4>
+                          </div>
                           <p className="text-[9px] text-white/20 tracking-widest uppercase mt-0.5">
                             {format(s.timestamp?.toDate(), 'dd MMM', { locale: it })} •
                             {s.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
 
-                        {/* Actions Container with Safety Padding */}
-                        <div className="flex items-center gap-2 pl-4">
+                        <div className="text-right px-4">
+                          <p className="text-sm font-bold tracking-tighter">€{s.total.toFixed(2)}</p>
+                          <p className="text-[9px] text-white/30 uppercase tracking-widest">{s.quantity} PZ</p>
+                        </div>
+
+                        {/* Actions Container */}
+                        <div className="flex items-center gap-2 pl-4 border-l border-white/5">
                           {isSameDay(selectedDate, new Date()) && (
-                            <button
-                              onClick={() => setSaleDeleteConfirm(s.id)}
-                              className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-black transition-all"
-                              title="Annulla vendita"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditingSale(s);
+                                  setEditSaleForm({ quantity: String(s.quantity), price: String(s.price) });
+                                }}
+                                className="p-3 bg-white/5 text-white/40 rounded-xl hover:bg-white/10 hover:text-white transition-all"
+                                title="Modifica"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                onClick={() => setSaleDeleteConfirm(s.id)}
+                                className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-black transition-all"
+                                title="Annulla vendita"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -1253,9 +1280,12 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <div className="flex flex-col">
                           <p className="text-[8px] text-white/30 tracking-widest uppercase mb-1 font-bold">In Stock</p>
-                          <p className={`text-xl font-sans font-bold tracking-tight ${item.quantity <= 2 ? 'text-red-500' : 'text-white'}`}>
-                            {item.quantity} PZ
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                            <p className={`text-xl font-sans font-bold tracking-tight ${item.quantity <= 2 ? 'text-red-500' : 'text-white'}`}>
+                              {item.quantity} PZ
+                            </p>
+                          </div>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => startSaleFromInventory(item)} className="p-4 bg-white text-black rounded-2xl hover:scale-105 active:scale-95 transition-all">
@@ -1625,23 +1655,24 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="h-[400px] w-full bg-white/[0.02] rounded-3xl p-6 border border-white/5">
+              <div className="h-[400px] md:h-[300px] w-full relative group select-none overflow-hidden rounded-3xl bg-white/[0.02] border border-white/5">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                    <XAxis
-                      type="number"
-                      dataKey="day"
-                      name="Giorno"
-                      domain={[0, 6]}
+                    <XAxis 
+                      type="number" 
+                      dataKey="day" 
+                      name="Giorno" 
+                      domain={[0, 6]} 
                       ticks={[0, 1, 2, 3, 4, 5, 6]}
                       tickFormatter={(val) => {
-                        const startDate = startOfWeek(analysisDate, { weekStartsOn: 1 });
-                        return format(addDays(startDate, val), 'EEE', { locale: it });
+                        const days = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB', 'DOM'];
+                        return days[val];
                       }}
-                      axisLine={false}
+                      stroke="#ffffff33"
+                      fontSize={9}
                       tickLine={false}
-                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }}
+                      axisLine={false}
                     />
                     <YAxis
                       type="number"
@@ -1741,8 +1772,16 @@ export default function App() {
                           {s.timestamp?.toDate().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })} • {s.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </td>
                         <td className="px-8 py-6">
-                          <p className="text-xs font-bold tracking-widest uppercase">{s.itemName}</p>
-                          <p className="text-[9px] text-white/30 tracking-widest uppercase">{s.itemCode}</p>
+                          <div className="flex items-center gap-3">
+                            {(() => {
+                              const item = items.find(it => it.code === s.itemCode);
+                              return <div className={`w-2 h-2 rounded-full ${item && item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />;
+                            })()}
+                            <div>
+                              <p className="text-xs font-bold tracking-widest uppercase">{s.itemName}</p>
+                              <p className="text-[9px] text-white/30 tracking-widest uppercase">{s.itemCode}</p>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-8 py-6 text-xs text-white/60">€{s.price?.toFixed(2)}</td>
                         <td className="px-8 py-6 text-xs font-bold">{s.quantity}</td>
@@ -1773,9 +1812,15 @@ export default function App() {
                   getFilteredSales(salesView).map(s => (
                     <div key={s.id} className="px-4 py-5 flex flex-col gap-3">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-bold tracking-widest uppercase truncate">{s.itemName}</p>
-                          <p className="text-[9px] text-white/40 tracking-[0.3em] uppercase truncate">{s.itemCode}</p>
+                        <div className="min-w-0 flex items-center gap-3">
+                          {(() => {
+                            const item = items.find(it => it.code === s.itemCode);
+                            return <div className={`w-2 h-2 rounded-full flex-shrink-0 ${item && item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />;
+                          })()}
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold tracking-widest uppercase truncate">{s.itemName}</p>
+                            <p className="text-[9px] text-white/40 tracking-[0.3em] uppercase truncate">{s.itemCode}</p>
+                          </div>
                         </div>
                         <div className="text-right text-[9px] text-white/40">
                           <p>{s.timestamp?.toDate().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
