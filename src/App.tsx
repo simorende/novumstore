@@ -709,7 +709,6 @@ export default function App() {
     const dayNameLong = format(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), top.day === 0 ? 6 : top.day - 1), 'EEEE', { locale: it });
     return `La taglia ${top.size} della marca ${brand} viene venduta maggiormente il ${dayNameLong}.`;
   };
-
   if (!introDismissed) {
     return (
       <AnimatePresence mode="wait">
