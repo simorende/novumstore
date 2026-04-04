@@ -182,7 +182,7 @@ export default function App() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState<string>('');
   const [scanProgress, setScanProgress] = useState(0);
-  const [scanResult, setScanResult] = useState<{ code: string; size: string; price: string } | null>(null);
+  const [scanResult, setScanResult] = useState<{ code: string; name: string; size: string; price: string } | null>(null);
   const [torchOn, setTorchOn] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -456,12 +456,15 @@ export default function App() {
   };
 
   const parseOCRText = (text: string) => {
-    let results = { code: '', size: '', price: '' };
+    let results = { code: '', name: '', size: '', price: '' };
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    // 1. Price: Look for numbers with , or . and two decimals (e.g., 39,90)
-    const priceRegex = /(\d+[,.]\d{2})/;
+    // 1. Price: Flexible regex for XX,XX or XX.XX or even XX . XX
+    const priceRegex = /(?:€|EUR)?\s*(\d+[\s.,]+\d{2})\b/i;
     const priceMatch = text.match(priceRegex);
-    if (priceMatch) results.price = priceMatch[1].replace(',', '.');
+    if (priceMatch) {
+      results.price = priceMatch[1].replace(/\s+/g, '').replace(',', '.');
+    }
 
     // 2. Size: Words like S, M, L, XL or numbers 38-60
     const sizeWords = ['XXXL', 'XXL', 'XL', 'XXS', 'XS', 'S', 'M', 'L', 'UNI'];
@@ -476,18 +479,32 @@ export default function App() {
       if (sizeNumMatch) results.size = sizeNumMatch[1];
     }
 
-    // 3. Code: Alphanumeric after "Art." or "Cod."
+    // 3. Name: Try to find the first substantial word line that isn't a code or price
+    const nameLine = lines.find(l => 
+      l.length > 3 && 
+      !l.match(/\d/) && 
+      !['FINE', 'COTTON', 'MADE', 'ITALY', 'ART', 'COD', 'COLOR'].some(w => l.toUpperCase().includes(w))
+    );
+    if (nameLine) results.name = nameLine.charAt(0) + nameLine.slice(1).toLowerCase();
+
+    // 4. Code: Alphanumeric after "Art." or "Cod." or long patterns
     const codeContextRegex = /(?:ART|COD|CODE|ARTICOLO)\.?\s*[:\-]?\s*([A-Z0-9]{3,20})/i;
     const codeContextMatch = text.match(codeContextRegex);
+    
+    const blacklist = ['FINE', 'COTTON', 'MADE', 'ITALY', 'ITALIA', 'WASH', 'COTONE', 'POLYESTER', 'CHINA', 'STYLE'];
+
     if (codeContextMatch) {
       results.code = codeContextMatch[1].toUpperCase();
     } else {
-      // Fallback: search for long alphanumeric sequences not already taken by price/size
       const fallbackCodeRegex = /\b([A-Z0-9]{4,20})\b/gi;
       const allMatches = Array.from(text.matchAll(fallbackCodeRegex));
       for (const m of allMatches) {
         const potential = m[1].toUpperCase();
-        if (potential !== results.size && !potential.match(/^\d+$/)) {
+        // Exclude if it's the price or size or in blacklist
+        if (potential !== results.size && 
+            !potential.match(/^\d+$/) && 
+            !blacklist.includes(potential) &&
+            !results.price.includes(potential)) {
           results.code = potential;
           break;
         }
@@ -2345,8 +2362,20 @@ export default function App() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-[#0A0A0A] border border-white/10 p-10 rounded-[40px] max-w-md w-full shadow-2xl"
             >
-              <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-8 text-white/40">Dati Rilevati</h3>
-              <div className="space-y-6 mb-10">
+              <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-8 text-white/40">Conferma Dati</h3>
+              
+              <div className="space-y-4 mb-8">
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Nome Articolo</p>
+                  <input 
+                    type="text" 
+                    placeholder="Es: Abito Sera"
+                    value={scanResult.name} 
+                    onChange={e => setScanResult({...scanResult, name: e.target.value})}
+                    className="w-full bg-transparent font-sans font-bold text-sm tracking-widest text-white outline-none focus:text-amber-500"
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                     <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Codice</p>
@@ -2367,8 +2396,9 @@ export default function App() {
                     />
                   </div>
                 </div>
+
                 <div className="p-6 bg-white/5 rounded-3xl border border-white/5">
-                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Prezzo Rilevato</p>
+                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Prezzo</p>
                   <div className="flex items-end gap-2">
                     <span className="text-2xl font-bold text-white">€</span>
                     <input 
@@ -2386,19 +2416,20 @@ export default function App() {
                   onClick={() => setScanResult(null)}
                   className="py-5 border border-white/10 text-white/40 font-sans text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:text-white hover:bg-white/5 transition-all"
                 >
-                  Riprova
+                  Nuova Foto
                 </button>
                 <button 
                   onClick={() => {
                     setNewItem({
                       ...newItem,
+                      name: scanResult.name,
                       code: scanResult.code,
                       size: scanResult.size,
                       price: scanResult.price
                     });
                     setScanResult(null);
                     setIsScannerOpen(false);
-                    showMessage("Dati inseriti nel form", "success");
+                    showMessage("Dati pronti nel modulo", "success");
                   }}
                   className="py-5 bg-white text-black font-sans text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]"
                 >
