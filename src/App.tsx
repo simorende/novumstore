@@ -459,40 +459,44 @@ export default function App() {
     let results = { code: '', name: '', size: '', price: '' };
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    // 1. Price: Flexible regex for XX,XX or XX.XX or even XX . XX
-    const priceRegex = /(?:€|EUR)?\s*(\d+[\s.,]+\d{2})\b/i;
-    const priceMatch = text.match(priceRegex);
-    if (priceMatch) {
-      results.price = priceMatch[1].replace(/\s+/g, '').replace(',', '.');
+    // 1. Price: Much more flexible. Support whole numbers (11€) and context words
+    const priceContextRegex = /(?:PREZZO|PRICE|TOTAL|TOTALE)\.?\s*[:\-]?\s*(\d+(?:[\s.,]+\d{1,2})?)/i;
+    const priceSimpleRegex = /(\d+(?:[\s.,]+\d{2}))\s*(?:€|EUR)/i;
+    const priceSymbolRegex = /(?:€|EUR)\s*(\d+(?:[\s.,]+\d{1,2})?)/i;
+    const priceShortRegex = /\b(\d+)\s*€/i;
+
+    const pMatch = text.match(priceContextRegex) || text.match(priceSimpleRegex) || text.match(priceSymbolRegex) || text.match(priceShortRegex);
+    if (pMatch) {
+      results.price = pMatch[1].replace(/\s+/g, '').replace(',', '.');
+      if (!results.price.includes('.')) results.price += '.00';
     }
 
-    // 2. Size: Words like S, M, L, XL or numbers 38-60
+    // 2. Size: Look for "TAGLIA: L" or standalone S/M/L
+    const sizeContextRegex = /(?:TAGLIA|SIZE|TG)\.?\s*[:\-]?\s*([SMLXU0-9]{1,4})\b/i;
     const sizeWords = ['XXXL', 'XXL', 'XL', 'XXS', 'XS', 'S', 'M', 'L', 'UNI'];
     const sizeWordRegex = new RegExp(`\\b(${sizeWords.join('|')})\\b`, 'i');
-    const sizeNumRegex = /\b(3[89]|[45]\d|60)\b/;
-
-    const sizeWordMatch = text.match(sizeWordRegex);
-    if (sizeWordMatch) {
-      results.size = sizeWordMatch[1].toUpperCase();
-    } else {
-      const sizeNumMatch = text.match(sizeNumRegex);
-      if (sizeNumMatch) results.size = sizeNumMatch[1];
+    
+    const sMatch = text.match(sizeContextRegex) || text.match(sizeWordRegex);
+    if (sMatch) {
+      results.size = sMatch[1].toUpperCase();
     }
 
-    // 3. Name: Try to find the first substantial word line that isn't a code or price
-    const nameLine = lines.find(l => 
-      l.length > 3 && 
-      !l.match(/\d/) && 
-      !['FINE', 'COTTON', 'MADE', 'ITALY', 'ART', 'COD', 'COLOR'].some(w => l.toUpperCase().includes(w))
-    );
-    if (nameLine) results.name = nameLine.charAt(0) + nameLine.slice(1).toLowerCase();
+    // 3. Name: The first substantial line that isn't already assigned
+    const blacklist = ['FINE', 'COTTON', 'MADE', 'ITALY', 'ITALIA', 'WASH', 'COTONE', 'POLYESTER', 'CHINA', 'STYLE', 'PREZZO', 'TAGLIA', 'TOTAL', 'SIZE', 'PRICE', 'ART', 'COD', 'ARTICOLO'];
+    const nameLine = lines.find(l => {
+      const up = l.toUpperCase();
+      return l.length > 3 && 
+             !l.match(/\d/) && 
+             !blacklist.some(w => up.includes(w)) &&
+             up !== results.code &&
+             up !== results.size;
+    });
+    if (nameLine) results.name = nameLine.charAt(0).toUpperCase() + nameLine.slice(1).toLowerCase();
 
-    // 4. Code: Alphanumeric after "Art." or "Cod." or long patterns
+    // 4. Code: Alphanumeric after "Art." or "Cod." or specific patterns
     const codeContextRegex = /(?:ART|COD|CODE|ARTICOLO)\.?\s*[:\-]?\s*([A-Z0-9]{3,20})/i;
     const codeContextMatch = text.match(codeContextRegex);
     
-    const blacklist = ['FINE', 'COTTON', 'MADE', 'ITALY', 'ITALIA', 'WASH', 'COTONE', 'POLYESTER', 'CHINA', 'STYLE'];
-
     if (codeContextMatch) {
       results.code = codeContextMatch[1].toUpperCase();
     } else {
@@ -500,7 +504,6 @@ export default function App() {
       const allMatches = Array.from(text.matchAll(fallbackCodeRegex));
       for (const m of allMatches) {
         const potential = m[1].toUpperCase();
-        // Exclude if it's the price or size or in blacklist
         if (potential !== results.size && 
             !potential.match(/^\d+$/) && 
             !blacklist.includes(potential) &&
