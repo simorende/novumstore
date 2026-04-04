@@ -32,7 +32,10 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell
+  Cell,
+  ScatterChart,
+  Scatter,
+  ZAxis
 } from 'recharts';
 import { format, subDays, startOfDay, isSameDay, subMonths, startOfMonth, isSameMonth, subYears, startOfYear, isSameYear, startOfWeek, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -137,7 +140,7 @@ export default function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'sales'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'sales' | 'analytics'>('dashboard');
   const [salesView, setSalesView] = useState<'daily' | 'monthly' | 'annual'>('daily');
   const [chartView, setChartView] = useState<'daily' | 'monthly' | 'annual'>('daily');
   const [showApp, setShowApp] = useState(false);
@@ -639,6 +642,74 @@ export default function App() {
 
   const chartData = getChartData();
 
+  const getTop3BestSellers = () => {
+    const now = new Date();
+    const twentyFourHoursAgo = subDays(now, 1);
+    
+    const last24hSales = sales.filter(s => {
+      const sDate = s.timestamp?.toDate();
+      return sDate && sDate >= twentyFourHoursAgo;
+    });
+
+    const grouped = last24hSales.reduce((acc, s) => {
+      acc[s.itemCode] = (acc[s.itemCode] || 0) + s.quantity;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(grouped)
+      .map(([code, qty]): {code: string, name: string, quantity: number} => {
+        const item = items.find(i => i.code === code);
+        return { code, name: item?.name || 'Sconosciuto', quantity: qty as number };
+      })
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 3);
+  };
+
+  const getSizeAnalysisData = () => {
+    const sizeMap: Record<string, Record<number, number>> = {};
+    
+    sales.forEach(s => {
+      const date = s.timestamp?.toDate();
+      const item = items.find(i => i.code === s.itemCode);
+      const size = item?.size || 'N/A';
+      if (!date || size === 'N/A') return;
+      
+      const day = date.getDay();
+      if (!sizeMap[size]) sizeMap[size] = {};
+      sizeMap[size][day] = (sizeMap[size][day] || 0) + s.quantity;
+    });
+
+    const data: {size: string, day: number, dayName: string, quantity: number}[] = [];
+    Object.entries(sizeMap).forEach(([size, days]) => {
+      Object.entries(days).forEach(([dayStr, qty]) => {
+        const dayNum = parseInt(dayStr);
+        data.push({
+          size,
+          day: dayNum,
+          dayName: format(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), dayNum === 0 ? 6 : dayNum - 1), 'EEE', { locale: it }),
+          quantity: qty
+        });
+      });
+    });
+
+    return data;
+  };
+
+  const getSizeInsight = () => {
+    const data = getSizeAnalysisData();
+    if (data.length === 0) return "Fai qualche vendita per vedere i trend delle taglie!";
+    
+    const top = [...data].sort((a, b) => b.quantity - a.quantity)[0];
+    const itemWithThisSize = sales.find(s => {
+      const item = items.find(i => i.code === s.itemCode);
+      return item?.size === top.size;
+    });
+    const brand = items.find(i => i.code === itemWithThisSize?.itemCode)?.name.split(' ')[0] || "generale";
+
+    const dayNameLong = format(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), top.day === 0 ? 6 : top.day - 1), 'EEEE', { locale: it });
+    return `La taglia ${top.size} della marca ${brand} viene venduta maggiormente il ${dayNameLong}.`;
+  };
+
   if (!introDismissed) {
     return (
       <AnimatePresence mode="wait">
@@ -785,7 +856,8 @@ export default function App() {
           {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { id: 'inventory', icon: Package, label: 'Inventario' },
-            { id: 'sales', icon: ShoppingCart, label: 'Vendite' }
+            { id: 'sales', icon: ShoppingCart, label: 'Vendite' },
+            { id: 'analytics', icon: BarChart3, label: 'Analytics' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1011,132 +1083,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-
-            {/* Sales Chart Section */}
-            <div className="bg-white/5 p-10 rounded-[40px] border border-white/5 select-none hover:border-white/10 transition-all">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-white/10 rounded-2xl">
-                    <BarChart3 className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold tracking-[0.4em] uppercase text-white/60">Andamento Vendite</h3>
-                    <p className="text-[10px] text-white/30 tracking-widest uppercase">Analisi dei ricavi (Clicca le barre per navigare)</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-end gap-4">
-                  {chartView === 'daily' && (
-                    <div className="flex items-center gap-1 bg-white/5 rounded-2xl p-1 border border-white/10">
-                      <button onClick={(e) => { e.stopPropagation(); setWeekOffset(o => o - 1); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white/50 hover:text-white">
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span className="text-[10px] font-bold tracking-widest uppercase min-w-[120px] text-center text-white/80">
-                        {(() => {
-                          const start = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), weekOffset * 7);
-                          const end = addDays(start, 6);
-                          return `${format(start, 'dd MMM', { locale: it })} - ${format(end, 'dd MMM', { locale: it })}`;
-                        })()}
-                      </span>
-                      <button onClick={(e) => { e.stopPropagation(); setWeekOffset(o => o + 1); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white/50 hover:text-white">
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  )}
-
-                  {chartView === 'monthly' && (
-                    <div className="flex items-center gap-1 bg-white/5 rounded-2xl p-1 border border-white/10">
-                      <button onClick={(e) => { e.stopPropagation(); setSemesterOffset(o => o - 1); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white/50 hover:text-white">
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span className="text-[10px] font-bold tracking-widest uppercase min-w-[80px] text-center text-white/80">
-                        {semesterOffset % 2 === 0 ? 'GEN-GIU' : 'LUG-DIC'} {Math.floor(semesterOffset / 2)}
-                      </span>
-                      <button onClick={(e) => { e.stopPropagation(); setSemesterOffset(o => o + 1); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white/50 hover:text-white">
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex bg-black/40 p-1 rounded-2xl border border-white/10">
-                    {['daily', 'monthly', 'annual'].map((p) => (
-                      <button
-                        key={p}
-                        onClick={(e) => { e.stopPropagation(); setChartView(p as any); }}
-                        className={`px-6 py-2 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all ${chartView === p ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
-                      >
-                        {p === 'daily' ? 'Settimana' : p === 'monthly' ? 'Mesi' : 'Anni'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                className="h-[300px] w-full relative group select-none overflow-hidden rounded-3xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all" 
-                id="chart-container"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart 
-                    data={chartData} 
-                    margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-                    style={{ userSelect: 'none', webkitUserSelect: 'none' }}
-                    onClick={(state: any) => {
-                      if (chartView === 'daily' && state && state.activeTooltipIndex !== undefined) {
-                        const entry = chartData[state.activeTooltipIndex];
-                        if (entry && entry.rawDate) {
-                          setSelectedDate(entry.rawDate);
-                          showMessage(`Data selezionata: ${format(entry.rawDate, 'eeee dd MMMM', { locale: it })}`, 'success');
-                        }
-                      }
-                    }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" style={{ pointerEvents: 'none' }} />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 'bold' }} 
-                      dy={10}
-                    />
-                    <YAxis hide />
-                    <Tooltip 
-                      cursor={{ fill: 'rgba(255,255,255,0.05)', radius: 16 }}
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-[#0A0A0A] border border-white/10 p-4 rounded-2xl shadow-2xl backdrop-blur-md pointer-events-none">
-                              <p className="text-[10px] font-bold tracking-widest uppercase text-white/40 mb-1">{payload[0].payload.fullDate}</p>
-                              <p className="text-xl font-sans font-bold tracking-tighter">€{payload[0].value.toFixed(2)}</p>
-                              {chartView === 'daily' && (
-                                <div className="mt-3 py-1 px-2 bg-amber-500/10 rounded-lg">
-                                  <p className="text-[8px] text-amber-500 font-bold uppercase tracking-widest text-center animate-pulse">CLICCA PER DETTAGLI</p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar 
-                      dataKey="total" 
-                      radius={[16, 16, 16, 16]}
-                      isAnimationActive={false}
-                      className="cursor-pointer"
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={isSameDay(entry.rawDate, selectedDate) ? '#ffffff' : 'rgba(255,255,255,0.1)'}
-                          className="hover:fill-white/40 transition-all duration-300"
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
           </motion.div>
         )}
 
@@ -1242,121 +1188,455 @@ export default function App() {
                 )}
 
                 <div className="bg-white/5 rounded-[40px] border border-white/5 overflow-hidden">
-                  <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="text-white/40 text-[10px] tracking-[0.3em] uppercase border-b border-white/10">
-                        <th className="px-2 lg:px-3 py-4">Codice</th>
-                        <th className="px-2 lg:px-3 py-4">Articolo</th>
-                        <th className="px-2 lg:px-3 py-4 text-center">Taglia</th>
-                        <th className="px-2 lg:px-3 py-4 text-center">Colore</th>
-                        <th className="px-2 lg:px-3 py-4">Prezzo</th>
-                        <th className="px-2 lg:px-3 py-4 text-center">Stock</th>
-                        <th className="px-2 lg:px-3 py-4 text-center">Stato</th>
-                        <th className="px-2 lg:px-3 py-4 text-center">Azioni</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {items.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-2 py-10 text-center">
-                            <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun articolo in inventario</p>
-                          </td>
+                  {/* Vista tabellare desktop */}
+                  <div className="overflow-x-auto hidden md:block">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="text-white/40 text-[10px] tracking-[0.3em] uppercase border-b border-white/10">
+                          <th className="px-2 lg:px-3 py-4">Codice</th>
+                          <th className="px-2 lg:px-3 py-4">Articolo</th>
+                          <th className="px-2 lg:px-3 py-4 text-center">Taglia</th>
+                          <th className="px-2 lg:px-3 py-4 text-center">Colore</th>
+                          <th className="px-2 lg:px-3 py-4">Prezzo</th>
+                          <th className="px-2 lg:px-3 py-4 text-center">Stock</th>
+                          <th className="px-2 lg:px-3 py-4 text-center">Stato</th>
+                          <th className="px-2 lg:px-3 py-4 text-center">Azioni</th>
                         </tr>
-                      ) : (
-                        (selectedCategory ? items.filter(i => i.name.toUpperCase().startsWith(selectedCategory)) : items).map(item => (
-                          editingItem === item.code ? (
-                            <tr key={`edit-${item.code}`} className="bg-white/10 shadow-inner">
-                              <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/40">{item.code}</td>
-                              <td className="px-2 lg:px-3 py-4">
-                                <input type="text" value={editForm.name || ''} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase outline-none focus:border-white" />
-                              </td>
-                              <td className="px-2 lg:px-3 py-4">
-                                <input type="text" placeholder="TG" value={editForm.size || ''} onChange={e => setEditForm({ ...editForm, size: e.target.value })} className="w-10 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
-                              </td>
-                              <td className="px-2 lg:px-3 py-4">
-                                <input type="text" placeholder="COL" value={editForm.color || ''} onChange={e => setEditForm({ ...editForm, color: e.target.value })} className="w-12 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
-                              </td>
-                              <td className="px-2 lg:px-3 py-4">
-                                <input type="text" value={editForm.price || ''} onChange={e => setEditForm({ ...editForm, price: e.target.value as any })} className="w-14 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs outline-none focus:border-white" />
-                              </td>
-                              <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center text-white/50">{item.quantity}</td>
-                              <td className="px-2 lg:px-3 py-4 text-center text-white/20">-</td>
-                              <td className="px-2 lg:px-3 py-4 text-center">
-                                <div className="flex justify-center gap-1">
-                                  <button onClick={handleSaveEdit} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-lg transition-colors border border-emerald-500/30" title="Salva"><Check size={14} /></button>
-                                  <button onClick={() => setEditingItem(null)} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white/60 hover:text-white transition-colors border border-white/10" title="Annulla"><X size={14} /></button>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : (
-                            <tr key={item.code} className="hover:bg-white/5 transition-colors group">
-                            <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/60 truncate max-w-[80px]">{item.code}</td>
-                            <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest uppercase truncate max-w-[120px]">{item.name}</td>
-                            <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
-                              {item.size ? item.size : (
-                                <input 
-                                  type="text"
-                                  placeholder="TG"
-                                  className="w-10 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                  onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'size', e.currentTarget.value); }}
-                                />
-                              )}
-                            </td>
-                            <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
-                              {item.color ? item.color : (
-                                <input 
-                                  type="text"
-                                  placeholder="COL"
-                                  className="w-12 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                  onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'color', e.currentTarget.value); }}
-                                />
-                              )}
-                            </td>
-                            <td className="px-2 lg:px-3 py-4 text-xs tracking-tighter">€{item.price.toFixed(2)}</td>
-                            <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center">{item.quantity}</td>
-                            <td className="px-2 lg:px-3 py-4">
-                              <div className={`w-2 h-2 mx-auto rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                            </td>
-                            <td className="px-2 lg:px-3 py-4 text-center">
-                              <div className="flex justify-center gap-1 lg:opacity-0 transition-opacity lg:group-hover:opacity-100">
-                                <button
-                                  onClick={() => startSaleFromInventory(item)}
-                                  className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"
-                                  title="Vendi"
-                                >
-                                  <ShoppingCart size={14} />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setEditingItem(item.code);
-                                    setEditForm({ name: item.name, size: item.size || '', color: item.color || '', price: item.price });
-                                  }}
-                                  className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400/60 hover:text-blue-400 transition-colors"
-                                  title="Modifica"
-                                >
-                                  <Pencil size={14} />
-                                </button>
-                                <button
-                                  onClick={() => setDeleteConfirm(item.code)}
-                                  className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500/40 hover:text-red-500 transition-colors"
-                                  title="Elimina"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {items.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-2 py-10 text-center">
+                              <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun articolo in inventario</p>
                             </td>
                           </tr>
-                          )
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          (selectedCategory ? items.filter(i => i.name.toUpperCase().startsWith(selectedCategory)) : items).map(item => (
+                            editingItem === item.code ? (
+                              <tr key={`edit-${item.code}`} className="bg-white/10 shadow-inner">
+                                <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/40">{item.code}</td>
+                                <td className="px-2 lg:px-3 py-4">
+                                  <input type="text" value={editForm.name || ''} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase outline-none focus:border-white" />
+                                </td>
+                                <td className="px-2 lg:px-3 py-4">
+                                  <input type="text" placeholder="TG" value={editForm.size || ''} onChange={e => setEditForm({ ...editForm, size: e.target.value })} className="w-10 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
+                                </td>
+                                <td className="px-2 lg:px-3 py-4">
+                                  <input type="text" placeholder="COL" value={editForm.color || ''} onChange={e => setEditForm({ ...editForm, color: e.target.value })} className="w-12 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs uppercase text-center outline-none focus:border-white mx-auto block" />
+                                </td>
+                                <td className="px-2 lg:px-3 py-4">
+                                  <input type="text" value={editForm.price || ''} onChange={e => setEditForm({ ...editForm, price: e.target.value as any })} className="w-14 bg-black/50 border border-white/20 rounded px-2 py-1 text-xs outline-none focus:border-white" />
+                                </td>
+                                <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center text-white/50">{item.quantity}</td>
+                                <td className="px-2 lg:px-3 py-4 text-center text-white/20">-</td>
+                                <td className="px-2 lg:px-3 py-4 text-center">
+                                  <div className="flex justify-center gap-1">
+                                    <button onClick={handleSaveEdit} className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-lg transition-colors border border-emerald-500/30" title="Salva"><Check size={14} /></button>
+                                    <button onClick={() => setEditingItem(null)} className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white/60 hover:text-white transition-colors border border-white/10" title="Annulla"><X size={14} /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr key={item.code} className="hover:bg-white/5 transition-colors group">
+                                <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest text-white/60 truncate max-w-[80px]">{item.code}</td>
+                                <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest uppercase truncate max-w-[120px]">{item.name}</td>
+                                <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
+                                  {item.size ? item.size : (
+                                    <input 
+                                      type="text"
+                                      placeholder="TG"
+                                      className="w-10 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
+                                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                      onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'size', e.currentTarget.value); }}
+                                    />
+                                  )}
+                                </td>
+                                <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
+                                  {item.color ? item.color : (
+                                    <input 
+                                      type="text"
+                                      placeholder="COL"
+                                      className="w-12 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
+                                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                      onBlur={(e) => { if (e.currentTarget.value.trim()) handleUpdateAttribute(item.code, 'color', e.currentTarget.value); }}
+                                    />
+                                  )}
+                                </td>
+                                <td className="px-2 lg:px-3 py-4 text-xs tracking-tighter">€{item.price.toFixed(2)}</td>
+                                <td className="px-2 lg:px-3 py-4 text-sm font-bold text-center">{item.quantity}</td>
+                                <td className="px-2 lg:px-3 py-4">
+                                  <div className={`w-2 h-2 mx-auto rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                </td>
+                                <td className="px-2 lg:px-3 py-4 text-center">
+                                  <div className="flex justify-center gap-1 lg:opacity-0 transition-opacity lg:group-hover:opacity-100">
+                                    <button
+                                      onClick={() => startSaleFromInventory(item)}
+                                      className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"
+                                      title="Vendi"
+                                    >
+                                      <ShoppingCart size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingItem(item.code);
+                                        setEditForm({ name: item.name, size: item.size || '', color: item.color || '', price: item.price });
+                                      }}
+                                      className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400/60 hover:text-blue-400 transition-colors"
+                                      title="Modifica"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => setDeleteConfirm(item.code)}
+                                      className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-500/40 hover:text-red-500 transition-colors"
+                                      title="Elimina"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Vista a schede mobile */}
+                  <div className="md:hidden divide-y divide-white/5">
+                    {items.length === 0 ? (
+                      <div className="px-4 py-8 text-center">
+                        <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun articolo in inventario</p>
+                      </div>
+                    ) : (
+                      (selectedCategory ? items.filter(i => i.name.toUpperCase().startsWith(selectedCategory)) : items).map(item => (
+                        <div key={item.code} className="px-4 py-5 flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold tracking-widest uppercase truncate">{item.name}</p>
+                              <p className="text-[9px] text-white/40 tracking-[0.3em] uppercase truncate">{item.code}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs tracking-tight">€{item.price.toFixed(2)}</p>
+                              <p className="text-[10px] font-bold">{item.quantity} PZ</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 text-[9px] text-white/50">
+                            <div className="flex items-center gap-2">
+                              <span className="uppercase tracking-[0.3em]">
+                                {item.size || 'TG ?'}
+                              </span>
+                              <span className="uppercase tracking-[0.3em]">
+                                {item.color || 'COL ?'}
+                              </span>
+                            </div>
+                            <div className={`w-2 h-2 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              onClick={() => startSaleFromInventory(item)}
+                              className="p-2 bg-white/5 rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+                              title="Vendi"
+                            >
+                              <ShoppingCart size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingItem(item.code);
+                                setEditForm({ name: item.name, size: item.size || '', color: item.color || '', price: item.price });
+                              }}
+                              className="p-2 bg-blue-500/10 rounded-xl text-blue-400/70 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
+                              title="Modifica"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(item.code)}
+                              className="p-2 bg-red-500/10 rounded-xl text-red-500/70 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+                              title="Elimina"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'analytics' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-6xl mx-auto space-y-12"
+          >
+            <header className="border-b border-white/10 pb-8">
+              <h1 className="text-5xl font-sans font-bold tracking-tighter mb-2">Analytics</h1>
+              <p className="text-white/40 font-sans text-xs tracking-[0.3em] uppercase">Insight e Trend di Vendita</p>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Best Seller Box */}
+              <div className="lg:col-span-1 bg-white/5 p-8 rounded-[40px] border border-white/5 relative overflow-hidden group">
+                <div className="relative z-10">
+                  <h3 className="text-[10px] font-bold tracking-[0.4em] uppercase mb-8 text-white/60">Top 3 Best Seller (24h)</h3>
+                  <div className="space-y-6">
+                    {getTop3BestSellers().length === 0 ? (
+                      <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun prodotto venduto oggi</p>
+                    ) : (
+                      getTop3BestSellers().map((item, idx) => (
+                        <div key={item.code} className="flex items-center justify-between group/item">
+                          <div className="flex items-center gap-4">
+                            <span className="text-2xl font-sans font-black text-white/10 group-hover/item:text-white/40 transition-colors">0{idx + 1}</span>
+                            <div>
+                              <p className="text-xs font-bold tracking-widest uppercase mb-0.5">{item.name}</p>
+                              <p className="text-[9px] text-white/30 tracking-widest uppercase">{item.code}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold tracking-tighter">{item.quantity} PZ</p>
+                            <p className="text-[8px] text-emerald-500/60 font-bold uppercase tracking-widest">In voga</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <TrendingUp className="absolute -right-4 -bottom-4 w-32 h-32 text-white/[0.02] -rotate-12 group-hover:scale-110 transition-transform" />
+              </div>
+
+              {/* Sales Chart (Moved from Dashboard) */}
+              <div className="lg:col-span-2 bg-white/5 p-8 rounded-[40px] border border-white/5 select-none hover:border-white/10 transition-all">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-white/10 rounded-2xl">
+                      <BarChart3 className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold tracking-[0.4em] uppercase text-white/60">Andamento Vendite</h3>
+                      <p className="text-[10px] text-white/30 tracking-widest uppercase">Analisi ricavi</p>
+                    </div>
+                  </div>
+
+                  <div className="flex bg-black/40 p-1 rounded-2xl border border-white/10">
+                    {['daily', 'monthly', 'annual'].map((p) => (
+                      <button
+                        key={p}
+                        onClick={(e) => { e.stopPropagation(); setChartView(p as any); }}
+                        className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all ${chartView === p ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
+                      >
+                        {p === 'daily' ? 'Settimana' : p === 'monthly' ? 'Mesi' : 'Anni'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-[250px] w-full relative group select-none overflow-hidden rounded-3xl bg-white/[0.02] border border-white/5">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      data={chartData} 
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      onClick={(state: any) => {
+                        if (chartView === 'daily' && state && state.activeTooltipIndex !== undefined) {
+                          const entry = chartData[state.activeTooltipIndex];
+                          if (entry && entry.rawDate) {
+                            setSelectedDate(entry.rawDate);
+                            showMessage(`Visualizzazione per il giorno: ${format(entry.rawDate, 'eeee dd MMMM', { locale: it })}`, 'success');
+                          }
+                        }
+                      }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 'bold' }} dy={10} />
+                      <YAxis hide />
+                      <Tooltip 
+                        cursor={{ fill: 'rgba(255,255,255,0.05)', radius: 16 }}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-[#0A0A0A] border border-white/10 p-4 rounded-2xl shadow-2xl backdrop-blur-md">
+                                <p className="text-[10px] font-bold tracking-widest uppercase text-white/40 mb-1">{payload[0].payload.fullDate}</p>
+                                <p className="text-xl font-sans font-bold tracking-tighter">€{payload[0].value.toFixed(2)}</p>
+                                {chartView === 'daily' && (
+                                  <div className="mt-2 py-1 px-2 bg-amber-500/10 rounded-lg">
+                                    <p className="text-[8px] text-amber-500 font-bold uppercase tracking-widest text-center animate-pulse">CLICCA PER SELEZIONARE</p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="total" radius={[16, 16, 16, 16]} isAnimationActive={false}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={isSameDay(entry.rawDate, selectedDate) ? '#ffffff' : 'rgba(255,255,255,0.1)'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Selected Day Summary (New System) */}
+            <AnimatePresence>
+              {!isSameDay(selectedDate, new Date()) && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white/5 p-10 rounded-[40px] border border-amber-500/20 overflow-hidden relative"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                    <div>
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="p-3 bg-amber-500/10 rounded-2xl">
+                          <Eye className="w-5 h-5 text-amber-500" />
+                        </div>
+                        <h3 className="text-xs font-bold tracking-[0.4em] uppercase text-amber-500/80">Focus Giorno Selezionato</h3>
+                      </div>
+                      <p className="text-2xl font-sans font-bold tracking-tighter mb-4">
+                        {format(selectedDate, 'eeee dd MMMM yyyy', { locale: it })}
+                      </p>
+                      <button 
+                        onClick={() => {
+                          setSelectedDate(new Date());
+                          showMessage('Ripristinato alla data odierna', 'success');
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-xl text-[10px] font-bold tracking-widest uppercase hover:bg-white/90 transition-all shadow-lg active:scale-95"
+                      >
+                        <RefreshCw size={12} className="animate-spin-slow" />
+                        Ripristina a oggi
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-8 md:gap-12 text-right md:text-left">
+                      <div>
+                        <p className="text-white/20 text-[10px] tracking-widest uppercase mb-1">Guadagno</p>
+                        <p className="text-3xl font-sans font-bold tracking-tighter text-emerald-500">
+                          €{sales.filter(s => {
+                            const date = s.timestamp?.toDate();
+                            return date && isSameDay(date, selectedDate);
+                          }).reduce((acc, s) => acc + s.total, 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-white/20 text-[10px] tracking-widest uppercase mb-1">Transazioni</p>
+                        <p className="text-3xl font-sans font-bold tracking-tighter">
+                          {sales.filter(s => {
+                            const date = s.timestamp?.toDate();
+                            return date && isSameDay(date, selectedDate);
+                          }).length}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {sales.filter(s => {
+                      const date = s.timestamp?.toDate();
+                      return date && isSameDay(date, selectedDate);
+                    }).slice(0, 3).map(s => (
+                      <div key={s.id} className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                        <p className="text-[11px] font-bold tracking-widest uppercase truncate">{s.itemName}</p>
+                        <p className="text-[9px] text-white/40 tracking-widest uppercase">{s.quantity} PZ • €{s.total.toFixed(2)}</p>
+                      </div>
+                    ))}
+                    {sales.filter(s => {
+                      const date = s.timestamp?.toDate();
+                      return date && isSameDay(date, selectedDate);
+                    }).length > 3 && (
+                      <button 
+                        onClick={() => setActiveTab('sales')}
+                        className="flex items-center justify-center p-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-bold tracking-widest uppercase hover:bg-white hover:text-black transition-all h-full"
+                      >
+                        Vedi tutte le vendite
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Size Analysis Section */}
+            <div className="bg-white/5 p-10 rounded-[40px] border border-white/5">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-10">
+                <div>
+                  <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-2 text-white/60">Analisi Taglie</h3>
+                  <p className="text-[10px] text-amber-500/80 font-bold tracking-widest uppercase bg-amber-500/10 px-4 py-2 rounded-full border border-amber-500/20 inline-block">
+                    {getSizeInsight()}
+                  </p>
+                </div>
+                <div className="text-right hidden md:block">
+                  <p className="text-[9px] text-white/20 tracking-widest uppercase">Distribuzione Vendite per Taglia/Giorno</p>
+                </div>
+              </div>
+
+              <div className="h-[400px] w-full bg-white/[0.02] rounded-3xl p-6 border border-white/5">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis 
+                      type="number" 
+                      dataKey="day" 
+                      name="Giorno" 
+                      domain={[0, 7]} 
+                      ticks={[1, 2, 3, 4, 5, 6, 0]}
+                      tickFormatter={(val) => {
+                        const days = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+                        return days[val];
+                      }}
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }}
+                    />
+                    <YAxis 
+                      type="category" 
+                      dataKey="size" 
+                      name="Taglia" 
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }}
+                    />
+                    <ZAxis type="number" dataKey="quantity" range={[50, 400]} />
+                    <Tooltip 
+                      cursor={{ strokeDasharray: '3 3' }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const days = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                          return (
+                            <div className="bg-[#0A0A0A] border border-white/10 p-4 rounded-2xl shadow-2xl backdrop-blur-md">
+                              <p className="text-[10px] font-bold tracking-widest uppercase text-white/40 mb-1">{days[data.day]}</p>
+                              <p className="text-sm font-sans font-bold tracking-tight mb-1">Taglia: {data.size}</p>
+                              <p className="text-xl font-sans font-bold tracking-tighter">Vendite: {data.quantity}</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Scatter 
+                      name="Vendite" 
+                      data={getSizeAnalysisData()} 
+                      fill="#ffffff"
+                      opacity={0.6}
+                    >
+                      {getSizeAnalysisData().map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.quantity > 5 ? '#ffffff' : 'rgba(255,255,255,0.4)'} />
+                      ))}
+                    </Scatter>
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </motion.div>
         )}
@@ -1387,7 +1667,8 @@ export default function App() {
             </header>
 
             <div className="bg-white/5 rounded-[40px] border border-white/5 overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Vista tabellare desktop */}
+              <div className="overflow-x-auto hidden md:block">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-white/40 text-[10px] tracking-[0.3em] uppercase border-b border-white/10">
@@ -1425,6 +1706,45 @@ export default function App() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+
+              {/* Lista compatta mobile */}
+              <div className="md:hidden divide-y divide-white/5">
+                {getFilteredSales(salesView).length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessuna vendita registrata</p>
+                  </div>
+                ) : (
+                  getFilteredSales(salesView).map(s => (
+                    <div key={s.id} className="px-4 py-5 flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold tracking-widest uppercase truncate">{s.itemName}</p>
+                          <p className="text-[9px] text-white/40 tracking-[0.3em] uppercase truncate">{s.itemCode}</p>
+                        </div>
+                        <div className="text-right text-[9px] text-white/40">
+                          <p>{s.timestamp?.toDate().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</p>
+                          <p>{s.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-4 text-[10px] text-white/60">
+                          <span>€{s.price?.toFixed(2)} cad.</span>
+                          <span className="font-bold">{s.quantity} PZ</span>
+                        </div>
+                        <p className="text-sm font-bold tracking-tighter">€{s.total?.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                <div className="bg-white text-black px-4 py-5 flex items-center justify-between text-[11px] font-bold tracking-[0.25em] uppercase">
+                  <span>Totale {salesView === 'daily' ? 'Giorno' : salesView === 'monthly' ? 'Mese' : 'Anno'}</span>
+                  <span className="text-lg font-sans tracking-tight">
+                    €{(salesView === 'daily' ? dailyEarnings : salesView === 'monthly' ? monthlyEarnings : annualEarnings).toFixed(2)}
+                  </span>
+                </div>
               </div>
             </div>
           </motion.div>
