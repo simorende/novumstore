@@ -483,7 +483,7 @@ export default function App() {
       results.code = codeContextMatch[1].toUpperCase();
     } else {
       // Fallback: search for long alphanumeric sequences not already taken by price/size
-      const fallbackCodeRegex = /\b([A-Z0-9]{4,20})\b/i;
+      const fallbackCodeRegex = /\b([A-Z0-9]{4,20})\b/gi;
       const allMatches = Array.from(text.matchAll(fallbackCodeRegex));
       for (const m of allMatches) {
         const potential = m[1].toUpperCase();
