@@ -37,7 +37,7 @@ import {
   Scatter,
   ZAxis
 } from 'recharts';
-import { format, subDays, startOfDay, isSameDay, subMonths, startOfMonth, isSameMonth, subYears, startOfYear, isSameYear, startOfWeek, addDays } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, endOfWeek, isSameDay, subMonths, startOfMonth, isSameMonth, subYears, startOfYear, isSameYear, startOfWeek, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 // Types
@@ -67,21 +67,21 @@ const Logo = ({ className = "", size = "normal" }: { className?: string, size?: 
   return (
     <div className={`flex flex-col items-center justify-center text-center select-none ${className}`}>
       {!imgError ? (
-        <img 
-          src="/logo.png" 
-          alt="Novum Store" 
+        <img
+          src="/logo.png"
+          alt="Novum Store"
           className={`object-contain transition-all duration-500 drop-shadow-[0_0_25px_rgba(255,255,255,0.2)] mix-blend-screen grayscale contrast-[2] brightness-125 ${size === 'large' ? 'w-[300px] sm:w-[400px] md:w-[600px] max-w-[90vw]' : 'w-full max-w-[280px]'}`}
           onError={() => setImgError(true)}
         />
       ) : (
         <>
-          <h1 
+          <h1
             className={`font-script text-white leading-[0.8] drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] whitespace-nowrap ${size === 'large' ? 'text-[4.5rem] md:text-[7rem]' : 'text-4xl md:text-[3.5rem]'}`}
             style={{ textShadow: '1px 1px 3px rgba(0,0,0,0.8)' }}
           >
             Novum Store
           </h1>
-          <p 
+          <p
             className={`font-sans text-white uppercase tracking-[0.5em] md:tracking-[0.8em] font-bold ${size === 'large' ? 'mt-3 text-[10px] md:text-sm' : 'mt-2 text-[8px] md:text-[10px]'}`}
             style={{ wordSpacing: '0.3em' }}
           >
@@ -96,9 +96,9 @@ const Logo = ({ className = "", size = "normal" }: { className?: string, size?: 
 // Autocomplete Input Component
 const CodeAutocomplete = ({ value, onChange, placeholder, className, items }: { value: string, onChange: (val: string) => void, placeholder: string, className: string, items: Item[] }) => {
   const [show, setShow] = useState(false);
-  const filtered = items.filter(i => 
-    i.code.toLowerCase().includes(value.toLowerCase().trim()) && 
-    value.trim() !== '' && 
+  const filtered = items.filter(i =>
+    i.code.toLowerCase().includes(value.toLowerCase().trim()) &&
+    value.trim() !== '' &&
     i.code.toLowerCase() !== value.toLowerCase().trim()
   );
 
@@ -117,7 +117,7 @@ const CodeAutocomplete = ({ value, onChange, placeholder, className, items }: { 
       {show && filtered.length > 0 && (
         <div className="absolute top-full left-0 w-full mt-2 bg-[#111] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
           {filtered.slice(0, 5).map(item => (
-            <div 
+            <div
               key={item.code}
               className="px-6 py-4 hover:bg-white/10 cursor-pointer flex justify-between items-center transition-colors border-b border-white/5 last:border-0"
               onMouseDown={(e) => {
@@ -166,11 +166,17 @@ export default function App() {
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [editSaleForm, setEditSaleForm] = useState({ quantity: '', price: '' });
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [analysisDate, setAnalysisDate] = useState(new Date());
   const [semesterOffset, setSemesterOffset] = useState(() => {
     const now = new Date();
     return now.getFullYear() * 2 + (now.getMonth() < 6 ? 0 : 1);
   });
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // Sync analysis window with selected global date
+  useEffect(() => {
+    setAnalysisDate(selectedDate);
+  }, [selectedDate]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -277,17 +283,17 @@ export default function App() {
         showMessage('Prezzo non valido', 'error');
         return;
       }
-      
+
       const updateData = {
         name: editForm.name?.trim().toUpperCase(),
         size: editForm.size?.trim() ? editForm.size.trim().toUpperCase() : null,
         color: editForm.color?.trim() ? editForm.color.trim().toUpperCase() : null,
         price: parsedPrice
       };
-      
+
       const { error } = await supabase.from('items').update(updateData).eq('code', editingItem);
       if (error) throw error;
-      
+
       showMessage('Articolo aggiornato', 'success');
       setEditingItem(null);
       fetchItems();
@@ -600,7 +606,7 @@ export default function App() {
       const year = Math.floor(semesterOffset / 2);
       const isSecondHalf = semesterOffset % 2 !== 0;
       const startMonth = isSecondHalf ? 6 : 0;
-      
+
       return Array.from({ length: 6 }).map((_, i) => {
         const date = new Date(year, startMonth + i, 1);
         const monthTotal = sales
@@ -645,7 +651,7 @@ export default function App() {
   const getTop3BestSellers = () => {
     const now = new Date();
     const twentyFourHoursAgo = subDays(now, 1);
-    
+
     const last24hSales = sales.filter(s => {
       const sDate = s.timestamp?.toDate();
       return sDate && sDate >= twentyFourHoursAgo;
@@ -657,40 +663,61 @@ export default function App() {
     }, {} as Record<string, number>);
 
     return Object.entries(grouped)
-      .map(([code, qty]): {code: string, name: string, quantity: number} => {
+      .map(([code, qty]): { code: string, name: string, quantity: number } | null => {
         const item = items.find(i => i.code === code);
-        return { code, name: item?.name || 'Sconosciuto', quantity: qty as number };
+        if (!item) return null;
+        return { code, name: item.name, quantity: qty as number };
       })
+      .filter((i): i is { code: string, name: string, quantity: number } => i !== null)
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 3);
   };
 
+  // Costanti per l'Analisi Taglie
+  const SIZES_ORDER = ['40', '41', '42', '43', '44', '45', '46', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'UNI'];
+
   const getSizeAnalysisData = () => {
-    const sizeMap: Record<string, Record<number, number>> = {};
-    
+    const sizeMap: Record<string, Record<string, number>> = {};
+
+    // Settimana fissa LUN-DOM basata su analysisDate
+    const startDate = startOfWeek(analysisDate, { weekStartsOn: 1 });
+    const endDate = endOfWeek(analysisDate, { weekStartsOn: 1 });
+
     sales.forEach(s => {
       const date = s.timestamp?.toDate();
+      if (!date || date < startDate || date > endDate) return;
+
       const item = items.find(i => i.code === s.itemCode);
-      const size = item?.size || 'N/A';
-      if (!date || size === 'N/A') return;
-      
-      const day = date.getDay();
+      if (!item) return; // Se il prodotto è stato eliminato dal magazzino, lo ignoriamo
+
+      let size = (item.size || 'UNI').toUpperCase();
+
+      const dayKey = format(date, 'yyyy-MM-dd');
       if (!sizeMap[size]) sizeMap[size] = {};
-      sizeMap[size][day] = (sizeMap[size][day] || 0) + s.quantity;
+      sizeMap[size][dayKey] = (sizeMap[size][dayKey] || 0) + s.quantity;
     });
 
-    const data: {size: string, day: number, dayName: string, quantity: number}[] = [];
-    Object.entries(sizeMap).forEach(([size, days]) => {
-      Object.entries(days).forEach(([dayStr, qty]) => {
-        const dayNum = parseInt(dayStr);
-        data.push({
-          size,
-          day: dayNum,
-          dayName: format(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), dayNum === 0 ? 6 : dayNum - 1), 'EEE', { locale: it }),
-          quantity: qty
-        });
+    const data: { size: string, yIndex: number, day: number, dateObj: Date, dayName: string, quantity: number, isSelected: boolean }[] = [];
+
+    // Generiamo i 7 giorni (LUN-DOM)
+    for (let i = 0; i < 7; i++) {
+      const currentDay = addDays(startDate, i);
+      const dayKey = format(currentDay, 'yyyy-MM-dd');
+
+      Object.entries(sizeMap).forEach(([size, days]) => {
+        if (days[dayKey]) {
+          data.push({
+            size,
+            yIndex: SIZES_ORDER.indexOf(size) !== -1 ? SIZES_ORDER.indexOf(size) : SIZES_ORDER.length,
+            day: i, // 0 (Lun) a 6 (Dom)
+            dateObj: currentDay,
+            dayName: format(currentDay, 'EEE', { locale: it }),
+            quantity: days[dayKey],
+            isSelected: isSameDay(currentDay, selectedDate)
+          });
+        }
       });
-    });
+    }
 
     return data;
   };
@@ -698,16 +725,12 @@ export default function App() {
   const getSizeInsight = () => {
     const data = getSizeAnalysisData();
     if (data.length === 0) return "Fai qualche vendita per vedere i trend delle taglie!";
-    
-    const top = [...data].sort((a, b) => b.quantity - a.quantity)[0];
-    const itemWithThisSize = sales.find(s => {
-      const item = items.find(i => i.code === s.itemCode);
-      return item?.size === top.size;
-    });
-    const brand = items.find(i => i.code === itemWithThisSize?.itemCode)?.name.split(' ')[0] || "generale";
 
-    const dayNameLong = format(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), top.day === 0 ? 6 : top.day - 1), 'EEEE', { locale: it });
-    return `La taglia ${top.size} della marca ${brand} viene venduta maggiormente il ${dayNameLong}.`;
+    const top = [...data].sort((a, b) => b.quantity - a.quantity)[0];
+    const brand = items.find(i => i.code === top.size)?.name.split(' ')[0] || "nella tua selezione";
+
+    const dayNameLong = format(top.dateObj, 'EEEE', { locale: it });
+    return `La taglia ${top.size} viene venduta maggiormente il ${dayNameLong}.`;
   };
   if (!introDismissed) {
     return (
@@ -818,8 +841,13 @@ export default function App() {
             <motion.div
               animate={{ opacity: [0.1, 0.3, 0.1] }}
               transition={{ duration: 4, repeat: Infinity }}
-              className="flex flex-col items-center gap-2"
+              className="flex flex-col items-center gap-6"
             >
+              <div className="max-w-[350px] text-center px-4">
+                <p className="text-[10px] text-white-500/70 tracking-[0.1em] leading-relaxed uppercase font-bold">
+                  Questo software è ad uso puramente gestionale interno e non sostituisce l'emissione dello scontrino fiscale tramite registratore di cassa certificato
+                </p>
+              </div>
               <p className="text-white/20 text-[9px] tracking-[0.4em] uppercase font-light">
                 Novum Store Management System
               </p>
@@ -843,45 +871,73 @@ export default function App() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-black text-white flex flex-col md:flex-row font-body">
-      {/* Sidebar */}
-      <aside className="w-full md:w-72 bg-black border-r border-white/10 flex flex-col z-20">
-        <div className="px-4 py-8 md:px-2 md:py-10 flex items-center justify-center border-b border-white/10">
+    <div className="min-h-screen bg-black text-white flex flex-col md:flex-row font-sans selection:bg-white selection:text-black">
+      {/* Sidebar Desktop (md+) */}
+      <aside className="hidden md:flex flex-col w-64 lg:w-80 bg-[#0A0A0A] border-r border-white/5 sticky top-0 h-screen z-40">
+        <div className="p-10">
           <Logo />
         </div>
-
-        <nav className="flex-1 p-6 space-y-4">
+        
+        <nav className="flex-1 px-6 space-y-1">
           {[
             { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+            { id: 'analytics', icon: BarChart3, label: 'Analytics' },
             { id: 'inventory', icon: Package, label: 'Inventario' },
-            { id: 'sales', icon: ShoppingCart, label: 'Vendite' },
-            { id: 'analytics', icon: BarChart3, label: 'Analytics' }
-          ].map((tab) => (
+            { id: 'sales', icon: ShoppingCart, label: 'Cronologia' }
+          ].map((item) => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${activeTab === tab.id ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.15)]' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
+                activeTab === item.id 
+                  ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]' 
+                  : 'text-white/40 hover:text-white hover:bg-white/5'
+              }`}
             >
-              <tab.icon className={`w-5 h-5 transition-transform duration-300 ${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-110'}`} />
-              <span className="font-sans text-xs font-bold tracking-widest uppercase">{tab.label}</span>
+              <item.icon size={18} className={`${activeTab === item.id ? '' : 'group-hover:scale-110 transition-transform'}`} />
+              <span className="text-[10px] font-bold tracking-[0.2em] uppercase">{item.label}</span>
             </button>
           ))}
         </nav>
-
-        <div className="p-8 border-t border-white/10">
-          <button
+        
+        <div className="p-8 mt-auto">
+          <button 
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-2xl transition-all border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
+            className="w-full flex items-center gap-4 px-6 py-4 text-white/20 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all group"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut size={18} className="group-hover:rotate-12 transition-transform" />
             <span className="text-[10px] font-bold tracking-[0.2em] uppercase">Disconnetti</span>
           </button>
         </div>
       </aside>
 
+      {/* Navigation Mobile (Below md) */}
+      <header className="md:hidden bg-black/80 backdrop-blur-xl border-b border-white/5 px-6 py-4 sticky top-0 z-50 flex items-center justify-between">
+        <div className="scale-75 origin-left">
+          <Logo />
+        </div>
+        <div className="flex gap-2">
+          {[
+            { id: 'dashboard', icon: LayoutDashboard },
+            { id: 'analytics', icon: BarChart3 },
+            { id: 'inventory', icon: Package },
+            { id: 'sales', icon: ShoppingCart }
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`p-3 rounded-xl transition-all ${
+                activeTab === item.id ? 'bg-white text-black' : 'text-white/40'
+              }`}
+            >
+              <item.icon size={18} />
+            </button>
+          ))}
+        </div>
+      </header>
+
       {/* Main Content */}
-      <main className="flex-1 p-6 md:p-12 overflow-auto bg-[#050505]">
+      <main className="flex-1 min-w-0 md:h-screen overflow-y-auto bg-black p-4 md:p-10 lg:p-14">
         <AnimatePresence mode="wait">
           {message && (
             <motion.div
@@ -907,7 +963,7 @@ export default function App() {
                 <div className="flex items-center gap-3 mb-2">
                   <h1 className="text-5xl font-sans font-bold tracking-tighter">Dashboard</h1>
                   {!isSameDay(selectedDate, new Date()) && (
-                    <button 
+                    <button
                       onClick={() => setSelectedDate(new Date())}
                       className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold tracking-widest uppercase rounded-full hover:bg-amber-500 hover:text-black transition-all flex items-center gap-2"
                     >
@@ -928,9 +984,9 @@ export default function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
-                { 
-                  label: isSameDay(selectedDate, new Date()) ? 'Guadagno Oggi' : `Guadagno ${format(selectedDate, 'dd/MM/yy', { locale: it })}`, 
-                  value: dailyEarnings, 
+                {
+                  label: isSameDay(selectedDate, new Date()) ? 'Guadagno Oggi' : `Guadagno ${format(selectedDate, 'dd/MM/yy', { locale: it })}`,
+                  value: dailyEarnings,
                   icon: TrendingUp,
                   isToday: isSameDay(selectedDate, new Date())
                 },
@@ -1038,42 +1094,28 @@ export default function App() {
                     </div>
                   ) : (
                     dailySales.map(s => (
-                      <div key={s.id} className="flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/20 transition-all group relative overflow-hidden">
-                        <div className="flex items-center gap-4">
-                          <div className="flex flex-col">
-                            <p className="text-xs font-bold tracking-widest uppercase mb-1">{s.itemName}</p>
-                            <p className="text-[10px] text-white/40 tracking-widest uppercase">{s.itemCode} • {s.quantity} PZ</p>
-                          </div>
+                      <div key={s.id} className="group flex items-center gap-4 p-4 sm:p-6 bg-white/[0.02] border border-white/5 rounded-3xl hover:bg-white/[0.04] transition-all">
+                        <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-lg font-script text-white/40 group-hover:scale-110 transition-transform">
+                          {s.itemName.charAt(0).toUpperCase()}
                         </div>
-                        <div className="flex items-center gap-6">
-                          <div className="text-right">
-                            <p className="text-sm font-bold tracking-tighter">€{s.total.toFixed(2)}</p>
-                            <p className="text-[9px] text-white/30 uppercase tracking-widest">
-                              {s.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                          
-                          {/* Hover Actions */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-[10px] font-bold tracking-widest uppercase truncate">{s.itemName}</h4>
+                          <p className="text-[9px] text-white/20 tracking-widest uppercase mt-0.5">
+                            {format(s.timestamp?.toDate(), 'dd MMM', { locale: it })} • 
+                            {s.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+
+                        {/* Actions Container with Safety Padding */}
+                        <div className="flex items-center gap-2 pl-4">
                           {isSameDay(selectedDate, new Date()) && (
-                            <div className="flex gap-2 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={() => {
-                                  setEditingSale(s);
-                                  setEditSaleForm({ quantity: String(s.quantity), price: String(s.price) });
-                                }}
-                                className="p-2 bg-white/5 hover:bg-blue-500/20 text-white/20 hover:text-blue-400 rounded-xl transition-all"
-                                title="Modifica"
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                onClick={() => setSaleDeleteConfirm(s.id)}
-                                className="p-2 bg-white/5 hover:bg-red-500/20 text-white/20 hover:text-red-400 rounded-xl transition-all"
-                                title="Annulla Transazione"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => setSaleDeleteConfirm(s.id)}
+                              className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-black transition-all"
+                              title="Annulla vendita"
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1164,7 +1206,7 @@ export default function App() {
               </div>
 
               <div className="lg:col-span-2 flex flex-col gap-6">
-                
+
                 {/* Smart Category Filters */}
                 {items.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -1186,10 +1228,55 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="bg-white/5 rounded-[40px] border border-white/5 overflow-hidden">
-                  {/* Vista tabellare desktop */}
-                  <div className="overflow-x-auto hidden md:block">
-                    <table className="w-full text-left">
+                {/* Mobile View (sm only) */}
+                <div className="md:hidden flex flex-col gap-4 px-2">
+                  {items.filter(i => !selectedCategory || i.name.toUpperCase().includes(selectedCategory)).map(item => (
+                    <div key={item.code} className="bg-white/5 border border-white/10 rounded-3xl p-6 relative overflow-hidden group">
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <p className="text-[9px] text-white/30 tracking-widest uppercase mb-1 font-bold">{item.code}</p>
+                          <h4 className="text-sm font-bold tracking-tight uppercase leading-tight">{item.name}</h4>
+                        </div>
+                        <p className="text-xl font-sans font-bold tracking-tighter text-amber-500">€{item.price.toFixed(2)}</p>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="bg-black/20 p-3 rounded-2xl border border-white/5">
+                          <p className="text-[8px] text-white/30 tracking-widest uppercase mb-1">Taglia</p>
+                          <p className="text-xs font-bold font-mono tracking-widest">{item.size || 'UNI'}</p>
+                        </div>
+                        <div className="bg-black/20 p-3 rounded-2xl border border-white/5">
+                          <p className="text-[8px] text-white/30 tracking-widest uppercase mb-1">Colore</p>
+                          <p className="text-xs font-bold font-mono tracking-widest">{item.color || '-'}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <p className="text-[8px] text-white/30 tracking-widest uppercase mb-1 font-bold">In Stock</p>
+                          <p className={`text-xl font-sans font-bold tracking-tight ${item.quantity <= 2 ? 'text-red-500' : 'text-white'}`}>
+                            {item.quantity} PZ
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => startSaleFromInventory(item)} className="p-4 bg-white text-black rounded-2xl hover:scale-105 active:scale-95 transition-all">
+                            <ShoppingCart size={18} />
+                          </button>
+                          <button onClick={() => { setEditingItem(item.code); setEditForm(item); }} className="p-4 bg-white/5 border border-white/10 text-white/40 rounded-2xl hover:text-white transition-all">
+                            <Pencil size={18} />
+                          </button>
+                          <button onClick={() => setDeleteConfirm(item.code)} className="p-4 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500 hover:text-black transition-all">
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop/Tablet View (md+) */}
+                <div className="hidden md:block bg-white/5 border border-white/10 rounded-[40px] overflow-hidden backdrop-blur-xl">
+                  <table className="w-full text-left">
                       <thead>
                         <tr className="text-white/40 text-[10px] tracking-[0.3em] uppercase border-b border-white/10">
                           <th className="px-2 lg:px-3 py-4">Codice</th>
@@ -1241,7 +1328,7 @@ export default function App() {
                                 <td className="px-2 lg:px-3 py-4 text-[10px] font-bold tracking-widest uppercase truncate max-w-[120px]">{item.name}</td>
                                 <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
                                   {item.size ? item.size : (
-                                    <input 
+                                    <input
                                       type="text"
                                       placeholder="TG"
                                       className="w-10 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
@@ -1252,7 +1339,7 @@ export default function App() {
                                 </td>
                                 <td className="px-2 lg:px-3 py-4 text-[10px] tracking-widest uppercase text-white/50 text-center">
                                   {item.color ? item.color : (
-                                    <input 
+                                    <input
                                       type="text"
                                       placeholder="COL"
                                       className="w-12 px-1 py-1 bg-white/5 border border-white/10 rounded text-center outline-none focus:bg-white/10 transition-colors uppercase placeholder:normal-case placeholder:text-white/20"
@@ -1300,70 +1387,6 @@ export default function App() {
                         )}
                       </tbody>
                     </table>
-                  </div>
-
-                  {/* Vista a schede mobile */}
-                  <div className="md:hidden divide-y divide-white/5">
-                    {items.length === 0 ? (
-                      <div className="px-4 py-8 text-center">
-                        <p className="text-white/20 text-[10px] tracking-widest uppercase italic">Nessun articolo in inventario</p>
-                      </div>
-                    ) : (
-                      (selectedCategory ? items.filter(i => i.name.toUpperCase().startsWith(selectedCategory)) : items).map(item => (
-                        <div key={item.code} className="px-4 py-5 flex flex-col gap-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-bold tracking-widest uppercase truncate">{item.name}</p>
-                              <p className="text-[9px] text-white/40 tracking-[0.3em] uppercase truncate">{item.code}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs tracking-tight">€{item.price.toFixed(2)}</p>
-                              <p className="text-[10px] font-bold">{item.quantity} PZ</p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3 text-[9px] text-white/50">
-                            <div className="flex items-center gap-2">
-                              <span className="uppercase tracking-[0.3em]">
-                                {item.size || 'TG ?'}
-                              </span>
-                              <span className="uppercase tracking-[0.3em]">
-                                {item.color || 'COL ?'}
-                              </span>
-                            </div>
-                            <div className={`w-2 h-2 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.2)] ${item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2 pt-1">
-                            <button
-                              onClick={() => startSaleFromInventory(item)}
-                              className="p-2 bg-white/5 rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition-colors"
-                              title="Vendi"
-                            >
-                              <ShoppingCart size={14} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingItem(item.code);
-                                setEditForm({ name: item.name, size: item.size || '', color: item.color || '', price: item.price });
-                              }}
-                              className="p-2 bg-blue-500/10 rounded-xl text-blue-400/70 hover:bg-blue-500/20 hover:text-blue-300 transition-colors"
-                              title="Modifica"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(item.code)}
-                              className="p-2 bg-red-500/10 rounded-xl text-red-500/70 hover:bg-red-500/20 hover:text-red-400 transition-colors"
-                              title="Elimina"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
@@ -1437,11 +1460,11 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="h-[250px] w-full relative group select-none overflow-hidden rounded-3xl bg-white/[0.02] border border-white/5">
+                <div className="h-[280px] sm:h-[300px] w-full relative group select-none overflow-hidden rounded-3xl bg-white/[0.02] border border-white/5">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart 
-                      data={chartData} 
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    <BarChart
+                      data={chartData}
+                      margin={{ top: 20, right: 10, left: 0, bottom: 10 }}
                       onClick={(state: any) => {
                         if (chartView === 'daily' && state && state.activeTooltipIndex !== undefined) {
                           const entry = chartData[state.activeTooltipIndex];
@@ -1455,7 +1478,7 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 'bold' }} dy={10} />
                       <YAxis hide />
-                      <Tooltip 
+                      <Tooltip
                         cursor={{ fill: 'rgba(255,255,255,0.05)', radius: 16 }}
                         content={({ active, payload }) => {
                           if (active && payload && payload.length) {
@@ -1505,7 +1528,7 @@ export default function App() {
                       <p className="text-2xl font-sans font-bold tracking-tighter mb-4">
                         {format(selectedDate, 'eeee dd MMMM yyyy', { locale: it })}
                       </p>
-                      <button 
+                      <button
                         onClick={() => {
                           setSelectedDate(new Date());
                           showMessage('Ripristinato alla data odierna', 'success');
@@ -1553,13 +1576,13 @@ export default function App() {
                       const date = s.timestamp?.toDate();
                       return date && isSameDay(date, selectedDate);
                     }).length > 3 && (
-                      <button 
-                        onClick={() => setActiveTab('sales')}
-                        className="flex items-center justify-center p-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-bold tracking-widest uppercase hover:bg-white hover:text-black transition-all h-full"
-                      >
-                        Vedi tutte le vendite
-                      </button>
-                    )}
+                        <button
+                          onClick={() => setActiveTab('sales')}
+                          className="flex items-center justify-center p-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-bold tracking-widest uppercase hover:bg-white hover:text-black transition-all h-full"
+                        >
+                          Vedi tutte le vendite
+                        </button>
+                      )}
                   </div>
                 </motion.div>
               )}
@@ -1568,11 +1591,35 @@ export default function App() {
             {/* Size Analysis Section */}
             <div className="bg-white/5 p-10 rounded-[40px] border border-white/5">
               <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-10">
-                <div>
-                  <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-2 text-white/60">Analisi Taglie</h3>
-                  <p className="text-[10px] text-amber-500/80 font-bold tracking-widest uppercase bg-amber-500/10 px-4 py-2 rounded-full border border-amber-500/20 inline-block">
-                    {getSizeInsight()}
-                  </p>
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-2 text-white/60">Analisi Taglie</h3>
+                    <p className="text-[10px] text-amber-500/80 font-bold tracking-widest uppercase bg-amber-500/10 px-4 py-2 rounded-full border border-amber-500/20 inline-block">
+                      {getSizeInsight()}
+                    </p>
+                  </div>
+
+                  {/* Week Navigator */}
+                  <div className="flex items-center gap-3 bg-black/40 p-1.5 rounded-2xl border border-white/10 w-fit">
+                    <button
+                      onClick={() => setAnalysisDate(subDays(analysisDate, 7))}
+                      className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-all uppercase text-[9px] font-bold flex items-center gap-2"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <div className="px-3 py-1 flex flex-col items-center min-w-[140px]">
+                      <span className="text-[10px] font-bold tracking-[0.2em] uppercase">Settimana</span>
+                      <span className="text-[9px] text-white/40 tracking-widest uppercase mt-0.5">
+                        {format(startOfWeek(analysisDate, { weekStartsOn: 1 }), 'dd/MM')} - {format(endOfWeek(analysisDate, { weekStartsOn: 1 }), 'dd/MM')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setAnalysisDate(addDays(analysisDate, 7))}
+                      className="p-2 hover:bg-white/10 rounded-xl text-white/40 hover:text-white transition-all uppercase text-[9px] font-bold flex items-center gap-2"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div className="text-right hidden md:block">
                   <p className="text-[9px] text-white/20 tracking-widest uppercase">Distribuzione Vendite per Taglia/Giorno</p>
@@ -1583,30 +1630,33 @@ export default function App() {
                 <ResponsiveContainer width="100%" height="100%">
                   <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                    <XAxis 
-                      type="number" 
-                      dataKey="day" 
-                      name="Giorno" 
-                      domain={[0, 7]} 
-                      ticks={[1, 2, 3, 4, 5, 6, 0]}
+                    <XAxis
+                      type="number"
+                      dataKey="day"
+                      name="Giorno"
+                      domain={[0, 6]}
+                      ticks={[0, 1, 2, 3, 4, 5, 6]}
                       tickFormatter={(val) => {
-                        const days = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
-                        return days[val];
+                        const startDate = startOfWeek(analysisDate, { weekStartsOn: 1 });
+                        return format(addDays(startDate, val), 'EEE', { locale: it });
                       }}
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }}
                     />
-                    <YAxis 
-                      type="category" 
-                      dataKey="size" 
-                      name="Taglia" 
+                    <YAxis
+                      type="number"
+                      dataKey="yIndex"
+                      name="Taglia"
+                      domain={[0, SIZES_ORDER.length - 1]}
+                      ticks={Array.from(new Set(getSizeAnalysisData().map(d => d.yIndex))).filter(y => y < SIZES_ORDER.length).sort((a, b) => a - b)}
+                      tickFormatter={(val) => SIZES_ORDER[val] || ''}
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }}
                     />
                     <ZAxis type="number" dataKey="quantity" range={[50, 400]} />
-                    <Tooltip 
+                    <Tooltip
                       cursor={{ strokeDasharray: '3 3' }}
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
@@ -1614,7 +1664,9 @@ export default function App() {
                           const days = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
                           return (
                             <div className="bg-[#0A0A0A] border border-white/10 p-4 rounded-2xl shadow-2xl backdrop-blur-md">
-                              <p className="text-[10px] font-bold tracking-widest uppercase text-white/40 mb-1">{days[data.day]}</p>
+                              <p className="text-[10px] font-bold tracking-widest uppercase text-white/40 mb-1">
+                                {format(data.dateObj, 'eeee dd MMMM', { locale: it })}
+                              </p>
                               <p className="text-sm font-sans font-bold tracking-tight mb-1">Taglia: {data.size}</p>
                               <p className="text-xl font-sans font-bold tracking-tighter">Vendite: {data.quantity}</p>
                             </div>
@@ -1623,14 +1675,19 @@ export default function App() {
                         return null;
                       }}
                     />
-                    <Scatter 
-                      name="Vendite" 
-                      data={getSizeAnalysisData()} 
-                      fill="#ffffff"
-                      opacity={0.6}
+                    <Scatter
+                      name="Vendite"
+                      data={getSizeAnalysisData()}
+                      xDataKey="day"
+                      yDataKey="yIndex"
+                      zDataKey="quantity"
                     >
                       {getSizeAnalysisData().map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.quantity > 5 ? '#ffffff' : 'rgba(255,255,255,0.4)'} />
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.isSelected ? '#fbbf24' : (entry.quantity > 5 ? '#ffffff' : entry.quantity > 2 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)')}
+                          opacity={entry.isSelected ? 1 : 0.6}
+                        />
                       ))}
                     </Scatter>
                   </ScatterChart>
