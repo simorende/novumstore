@@ -182,7 +182,7 @@ export default function App() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scanStatus, setScanStatus] = useState<string>('');
   const [scanProgress, setScanProgress] = useState(0);
-  const [scanResult, setScanResult] = useState<{ code: string; name: string; size: string; price: string } | null>(null);
+  const [scanResult, setScanResult] = useState<{ code: string; name: string; size: string; price: string; quantity: string } | null>(null);
   const [torchOn, setTorchOn] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -456,65 +456,103 @@ export default function App() {
   };
 
   const parseOCRText = (text: string) => {
-    let results = { code: '', name: '', size: '', price: '' };
+    let results = { code: '', name: '', size: '', price: '', quantity: '1' };
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    // 1. Price: Much more flexible. Support whole numbers (11€) and context words
+    // Filter common noise from handwritten text
+    const cleanText = text.replace(/[|]/g, '1').replace(/[O]/g, '0');
+
+    // 1. Price: Whole numbers or decimals, with symbols or context
     const priceContextRegex = /(?:PREZZO|PRICE|TOTAL|TOTALE)\.?\s*[:\-]?\s*(\d+(?:[\s.,]+\d{1,2})?)/i;
     const priceSimpleRegex = /(\d+(?:[\s.,]+\d{2}))\s*(?:€|EUR)/i;
-    const priceSymbolRegex = /(?:€|EUR)\s*(\d+(?:[\s.,]+\d{1,2})?)/i;
     const priceShortRegex = /\b(\d+)\s*€/i;
 
-    const pMatch = text.match(priceContextRegex) || text.match(priceSimpleRegex) || text.match(priceSymbolRegex) || text.match(priceShortRegex);
+    const pMatch = cleanText.match(priceContextRegex) || cleanText.match(priceSimpleRegex) || cleanText.match(priceShortRegex);
     if (pMatch) {
       results.price = pMatch[1].replace(/\s+/g, '').replace(',', '.');
       if (!results.price.includes('.')) results.price += '.00';
     }
 
-    // 2. Size: Look for "TAGLIA: L" or standalone S/M/L
+    // 2. Size: "TAGLIA: L" or standalone S/M/L
     const sizeContextRegex = /(?:TAGLIA|SIZE|TG)\.?\s*[:\-]?\s*([SMLXU0-9]{1,4})\b/i;
     const sizeWords = ['XXXL', 'XXL', 'XL', 'XXS', 'XS', 'S', 'M', 'L', 'UNI'];
     const sizeWordRegex = new RegExp(`\\b(${sizeWords.join('|')})\\b`, 'i');
     
-    const sMatch = text.match(sizeContextRegex) || text.match(sizeWordRegex);
-    if (sMatch) {
-      results.size = sMatch[1].toUpperCase();
-    }
+    const sMatch = cleanText.match(sizeContextRegex) || cleanText.match(sizeWordRegex);
+    if (sMatch) results.size = sMatch[1].toUpperCase();
 
-    // 3. Name: The first substantial line that isn't already assigned
-    const blacklist = ['FINE', 'COTTON', 'MADE', 'ITALY', 'ITALIA', 'WASH', 'COTONE', 'POLYESTER', 'CHINA', 'STYLE', 'PREZZO', 'TAGLIA', 'TOTAL', 'SIZE', 'PRICE', 'ART', 'COD', 'ARTICOLO'];
-    const nameLine = lines.find(l => {
-      const up = l.toUpperCase();
-      return l.length > 3 && 
-             !l.match(/\d/) && 
-             !blacklist.some(w => up.includes(w)) &&
-             up !== results.code &&
-             up !== results.size;
-    });
-    if (nameLine) results.name = nameLine.charAt(0).toUpperCase() + nameLine.slice(1).toLowerCase();
+    // 3. Quantity (Stock): Look for context or digits after "PZ" / "QTY"
+    const qtyRegex = /(?:QTY|QTA|STOCK|PZ|QUANTITÀ)\.?\s*[:\-]?\s*(\d+)\b/i;
+    const qMatch = cleanText.match(qtyRegex);
+    if (qMatch) results.quantity = qMatch[1];
 
-    // 4. Code: Alphanumeric after "Art." or "Cod." or specific patterns
+    // 4. Code: Alphanumeric after "Art." or "Cod."
+    const blacklist = ['FINE', 'COTTON', 'MADE', 'ITALY', 'ITALIA', 'WASH', 'COTONE', 'POLYESTER', 'CHINA', 'STYLE', 'PREZZO', 'TAGLIA', 'TOTAL', 'SIZE', 'PRICE', 'ART', 'COD', 'ARTICOLO', 'STOCK', 'PZ', 'QTA', 'QTY'];
+    
     const codeContextRegex = /(?:ART|COD|CODE|ARTICOLO)\.?\s*[:\-]?\s*([A-Z0-9]{3,20})/i;
-    const codeContextMatch = text.match(codeContextRegex);
+    const codeContextMatch = cleanText.match(codeContextRegex);
     
     if (codeContextMatch) {
       results.code = codeContextMatch[1].toUpperCase();
     } else {
       const fallbackCodeRegex = /\b([A-Z0-9]{4,20})\b/gi;
-      const allMatches = Array.from(text.matchAll(fallbackCodeRegex));
+      const allMatches = Array.from(cleanText.matchAll(fallbackCodeRegex));
       for (const m of allMatches) {
         const potential = m[1].toUpperCase();
-        if (potential !== results.size && 
-            !potential.match(/^\d+$/) && 
-            !blacklist.includes(potential) &&
-            !results.price.includes(potential)) {
+        if (potential !== results.size && !potential.match(/^\d+$/) && !blacklist.includes(potential)) {
           results.code = potential;
           break;
         }
       }
     }
 
+    // 5. Name: First significant line
+    const nameLine = lines.find(l => {
+      const up = l.toUpperCase();
+      return l.length > 3 && !l.match(/\d/) && !blacklist.some(b => up.includes(b)) && up !== results.code && up !== results.size;
+    });
+    if (nameLine) results.name = nameLine.charAt(0).toUpperCase() + nameLine.slice(1).toLowerCase();
+
     return results;
+  };
+
+  const handleSaveFromScan = async () => {
+    if (!scanResult) return;
+    
+    const { code, name, price, size, quantity } = scanResult;
+    
+    if (!code || !name || !price || !quantity) {
+      showMessage("Compila tutti i campi obbligatori", "error");
+      return;
+    }
+
+    try {
+      const parsedPrice = parseFloat(price.replace(',', '.'));
+      const parsedQty = parseInt(quantity);
+      
+      if (isNaN(parsedPrice) || isNaN(parsedQty)) {
+        showMessage("Formato prezzo o quantità non valido", "error");
+        return;
+      }
+
+      const { error } = await supabase.from('items').upsert({
+        code: code.toUpperCase().trim(),
+        name: name.trim(),
+        price: parsedPrice,
+        quantity: parsedQty,
+        size: size ? size.trim().toUpperCase() : null,
+      });
+
+      if (error) throw error;
+
+      showMessage('Articolo salvato direttamente!', 'success');
+      setScanResult(null);
+      setIsScannerOpen(false);
+      fetchItems();
+    } catch (err: any) {
+      console.error(err);
+      showMessage(`Errore salvataggio: ${err.message}`, 'error');
+    }
   };
 
   const handleScanImage = async (imageFile: File) => {
@@ -2363,13 +2401,13 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-[#0A0A0A] border border-white/10 p-10 rounded-[40px] max-w-md w-full shadow-2xl"
+              className="bg-[#0A0A0A] border border-white/10 p-10 rounded-[40px] max-w-lg w-full shadow-2xl"
             >
-              <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-8 text-white/40">Conferma Dati</h3>
+              <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-8 text-white/40">Conferma e Salva</h3>
               
               <div className="space-y-4 mb-8">
                 <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Nome Articolo</p>
+                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Nome Articolo *</p>
                   <input 
                     type="text" 
                     placeholder="Es: Abito Sera"
@@ -2379,9 +2417,9 @@ export default function App() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                    <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Codice</p>
+                    <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Codice *</p>
                     <input 
                       type="text" 
                       value={scanResult.code} 
@@ -2398,10 +2436,19 @@ export default function App() {
                       className="w-full bg-transparent font-sans font-bold text-sm tracking-widest text-white outline-none focus:text-amber-500"
                     />
                   </div>
+                  <div className="p-4 bg-white/5 rounded-2xl border border-white/5 col-span-2 lg:col-span-1">
+                    <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Stock *</p>
+                    <input 
+                      type="number" 
+                      value={scanResult.quantity} 
+                      onChange={e => setScanResult({...scanResult, quantity: e.target.value})}
+                      className="w-full bg-transparent font-sans font-bold text-sm tracking-widest text-white outline-none focus:text-amber-500"
+                    />
+                  </div>
                 </div>
 
                 <div className="p-6 bg-white/5 rounded-3xl border border-white/5">
-                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Prezzo</p>
+                  <p className="text-[8px] tracking-[0.2em] uppercase text-white/30 mb-1">Prezzo Articolo *</p>
                   <div className="flex items-end gap-2">
                     <span className="text-2xl font-bold text-white">€</span>
                     <input 
@@ -2422,21 +2469,11 @@ export default function App() {
                   Nuova Foto
                 </button>
                 <button 
-                  onClick={() => {
-                    setNewItem({
-                      ...newItem,
-                      name: scanResult.name,
-                      code: scanResult.code,
-                      size: scanResult.size,
-                      price: scanResult.price
-                    });
-                    setScanResult(null);
-                    setIsScannerOpen(false);
-                    showMessage("Dati pronti nel modulo", "success");
-                  }}
-                  className="py-5 bg-white text-black font-sans text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                  onClick={handleSaveFromScan}
+                  disabled={!scanResult.code || !scanResult.name || !scanResult.price || !scanResult.quantity}
+                  className="py-5 bg-white text-black font-sans text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Conferma
+                  Salva Articolo
                 </button>
               </div>
             </motion.div>
