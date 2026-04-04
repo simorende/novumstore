@@ -871,6 +871,7 @@ export default function App() {
     );
   }
 
+  return (
     <div className="min-h-screen bg-black text-white flex flex-col md:flex-row font-sans selection:bg-white selection:text-black">
       {/* Sidebar Desktop (md+) */}
       <aside className="hidden md:flex flex-col w-64 lg:w-80 bg-[#0A0A0A] border-r border-white/5 sticky top-0 h-screen z-40">
