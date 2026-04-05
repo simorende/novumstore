@@ -366,18 +366,31 @@ export default function App() {
       const saleToDelete = sales.find(s => s.id === id);
       if (!saleToDelete) return;
 
-      const { data: item, error: fetchErr } = await supabase.from('items').select('quantity').eq('code', saleToDelete.itemCode).single();
-      if (fetchErr || !item) throw new Error('Articolo non trovato');
+      // 1. Prova a recuperare l'articolo per ripristinare lo stock
+      const { data: item, error: fetchErr } = await supabase.from('items').select('quantity').eq('code', saleToDelete.itemCode).maybeSingle();
+      
+      let stockUpdated = false;
+      if (item) {
+        // Se l'articolo esiste ancora, ripristiniamo la quantità
+        const { error: stockErr } = await supabase.from('items').update({
+          quantity: Number(item.quantity) + Number(saleToDelete.quantity)
+        }).eq('code', saleToDelete.itemCode);
+        
+        if (stockErr) throw stockErr;
+        stockUpdated = true;
+      }
 
-      const { error: stockErr } = await supabase.from('items').update({
-        quantity: Number(item.quantity) + Number(saleToDelete.quantity)
-      }).eq('code', saleToDelete.itemCode);
-      if (stockErr) throw stockErr;
-
+      // 2. Elimina sempre il record della vendita
       const { error: saleErr } = await supabase.from('sales').delete().eq('id', id);
       if (saleErr) throw saleErr;
 
-      showMessage('Vendita annullata e stock ripristinato', 'success');
+      showMessage(
+        stockUpdated 
+          ? 'Vendita annullata e stock ripristinato' 
+          : 'Vendita eliminata (articolo non trovato in magazzino)', 
+        'success'
+      );
+      
       setSaleDeleteConfirm(null);
       fetchItems();
       fetchSales();
@@ -401,27 +414,41 @@ export default function App() {
       }
 
       const diff = newQty - editingSale.quantity;
-      const { data: item, error: fetchErr } = await supabase.from('items').select('quantity').eq('code', editingSale.itemCode).single();
-      if (fetchErr || !item) throw new Error('Articolo non trovato');
+      
+      // 1. Prova a recuperare l'articolo per gestire lo stock
+      const { data: item, error: fetchErr } = await supabase.from('items').select('quantity').eq('code', editingSale.itemCode).maybeSingle();
+      
+      let stockUpdated = false;
+      if (item) {
+        if (diff > 0 && item.quantity < diff) {
+          showMessage('Stock insufficiente per la modifica', 'error');
+          return;
+        }
 
-      if (diff > 0 && item.quantity < diff) {
-        showMessage('Stock insufficiente per la modifica', 'error');
-        return;
+        const { error: stockErr } = await supabase.from('items').update({
+          quantity: Number(item.quantity) - diff
+        }).eq('code', editingSale.itemCode);
+        
+        if (stockErr) throw stockErr;
+        stockUpdated = true;
       }
 
-      const { error: stockErr } = await supabase.from('items').update({
-        quantity: Number(item.quantity) - diff
-      }).eq('code', editingSale.itemCode);
-      if (stockErr) throw stockErr;
-
+      // 2. Aggiorna sempre il record della vendita
       const { error: saleErr } = await supabase.from('sales').update({
         quantity: newQty,
         price: newPrice,
         total: newQty * newPrice
       }).eq('id', editingSale.id);
+      
       if (saleErr) throw saleErr;
 
-      showMessage('Vendita aggiornata', 'success');
+      showMessage(
+        stockUpdated 
+          ? 'Vendita aggiornata e stock regolato' 
+          : 'Vendita aggiornata (articolo non più in magazzino)', 
+        'success'
+      );
+      
       setEditingSale(null);
       fetchItems();
       fetchSales();
