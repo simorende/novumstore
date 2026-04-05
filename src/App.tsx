@@ -939,12 +939,10 @@ export default function App() {
 
       Object.entries(sizeMap).forEach(([size, days]) => {
         if (days[dayKey]) {
-          // Aggiungiamo un piccolo jitter casuale basato sulla taglia per evitare sovrapposizioni perfette
-          const jitter = (SIZES_ORDER.indexOf(size) % 3 - 1) * 0.15;
           data.push({
             size,
             yIndex: SIZES_ORDER.indexOf(size) !== -1 ? SIZES_ORDER.indexOf(size) : SIZES_ORDER.length,
-            day: i + jitter, // Jitter sull'asse X
+            day: i, // Perfectly aligned with the day axis
             dateObj: currentDay,
             dayName: format(currentDay, 'EEE', { locale: it }),
             quantity: days[dayKey],
@@ -1328,17 +1326,17 @@ export default function App() {
                     </div>
                   ) : (
                     dailySales.map(s => (
-                      <div key={s.id} className="min-w-[450px] sm:min-w-0 group flex items-center gap-4 p-4 sm:p-6 bg-white/[0.02] border border-white/5 rounded-3xl hover:bg-white/[0.04] transition-all snap-start">
-                        <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-lg font-script text-white/40 group-hover:scale-110 transition-transform">
+                      <div key={s.id} className="w-full min-w-0 group flex items-center gap-3 sm:gap-4 p-3 sm:p-6 bg-white/[0.02] border border-white/5 rounded-3xl hover:bg-white/[0.04] transition-all snap-start">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/5 flex-shrink-0 flex items-center justify-center text-base sm:text-lg font-script text-white/40 group-hover:scale-110 transition-transform">
                           {s.itemName.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             {(() => {
                               const item = items.find(it => it.code === s.itemCode);
-                              return <div className={`w-1.5 h-1.5 rounded-full ${item && item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />;
+                              return <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item && item.quantity > 0 ? 'bg-emerald-500' : 'bg-red-500'}`} />;
                             })()}
-                            <h4 className="text-[10px] font-bold tracking-widest uppercase whitespace-nowrap overflow-visible">
+                            <h4 className="text-[10px] font-bold tracking-widest uppercase truncate max-w-[120px]">
                               {s.itemName}
                             </h4>
                           </div>
@@ -1354,22 +1352,28 @@ export default function App() {
                         </div>
 
                         {/* Actions Container */}
-                        <div className="flex items-center gap-2 pl-4 border-l border-white/5">
+                        <div className="flex items-center gap-1.5 pl-4 border-l border-white/5 flex-shrink-0">
                           {isSameDay(selectedDate, new Date()) && (
                             <>
                               <button
-                                onClick={() => {
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setEditingSale(s);
                                   setEditSaleForm({ quantity: String(s.quantity), price: String(s.price) });
                                 }}
-                                className="p-3 bg-white/5 text-white/40 rounded-xl hover:bg-white/10 hover:text-white transition-all"
+                                className="p-3 bg-white/5 text-white/40 rounded-xl hover:bg-white/10 hover:text-white transition-all active:scale-95"
                                 title="Modifica"
                               >
                                 <Pencil size={16} />
                               </button>
                               <button
-                                onClick={() => setSaleDeleteConfirm(s.id)}
-                                className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-black transition-all"
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSaleDeleteConfirm(s.id);
+                                }}
+                                className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-black transition-all active:scale-95"
                                 title="Annulla vendita"
                               >
                                 <Trash2 size={16} />
@@ -2075,7 +2079,30 @@ export default function App() {
                           <span>€{s.price?.toFixed(2)} cad.</span>
                           <span className="font-bold">{s.quantity} PZ</span>
                         </div>
-                        <p className="text-sm font-bold tracking-tighter">€{s.total?.toFixed(2)}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold tracking-tighter mr-2">€{s.total?.toFixed(2)}</p>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingSale(s);
+                                setEditSaleForm({ quantity: String(s.quantity), price: String(s.price) });
+                              }}
+                              className="p-2 bg-white/5 text-white/40 rounded-lg hover:text-white transition-all"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSaleDeleteConfirm(s.id);
+                              }}
+                              className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-black transition-all"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -2183,6 +2210,85 @@ export default function App() {
           </div>
         )}
 
+        {/* Item Edit Modal (Global for Mobile/Desktop) */}
+        <AnimatePresence>
+          {editingItem && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-[#0a0a0a] border border-white/10 p-10 rounded-[40px] max-w-md w-full space-y-8 shadow-2xl"
+              >
+                <div>
+                  <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-2 text-white/40">Modifica Articolo</h3>
+                  <h4 className="text-xl font-sans font-bold tracking-tight uppercase">{editForm.name}</h4>
+                  <p className="text-[10px] text-white/30 tracking-widest uppercase">{editingItem}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[8px] tracking-[0.2em] uppercase text-white/30 ml-2">Nome</label>
+                    <input
+                      type="text"
+                      value={editForm.name || ''}
+                      onChange={e => setEditForm({...editForm, name: e.target.value})}
+                      className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-sm uppercase"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[8px] tracking-[0.2em] uppercase text-white/30 ml-2">Taglia</label>
+                      <input
+                        type="text"
+                        value={editForm.size || ''}
+                        onChange={e => setEditForm({...editForm, size: e.target.value.toUpperCase()})}
+                        className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[8px] tracking-[0.2em] uppercase text-white/30 ml-2">Colore</label>
+                      <input
+                        type="text"
+                        value={editForm.color || ''}
+                        onChange={e => setEditForm({...editForm, color: e.target.value.toUpperCase()})}
+                        className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[8px] tracking-[0.2em] uppercase text-white/30 ml-2">Prezzo (€)</label>
+                    <input
+                      type="text"
+                      value={editForm.price || ''}
+                      onChange={e => setEditForm({...editForm, price: e.target.value as any})}
+                      className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-white text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(null)}
+                    className="flex-1 px-8 py-4 border border-white/10 text-white/40 text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:text-white transition-all"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex-1 px-8 py-4 bg-white text-black text-[10px] font-bold tracking-widest uppercase rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  >
+                    Salva
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Sale Delete Confirmation */}
         {saleDeleteConfirm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
@@ -2220,12 +2326,19 @@ export default function App() {
 
         {/* Sale Edit Modal */}
         {editingSale && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingSale(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-[#0a0a0a] border border-white/10 p-10 rounded-[40px] max-w-md w-full space-y-8 shadow-2xl"
+              className="relative bg-[#0a0a0a] border border-white/10 p-6 sm:p-10 rounded-[32px] sm:rounded-[40px] max-w-md w-full space-y-6 sm:space-y-8 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div>
                 <h3 className="text-xs font-bold tracking-[0.4em] uppercase mb-2 text-white/40">Modifica Vendita</h3>
